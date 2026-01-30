@@ -8,151 +8,92 @@
 
 <script>
 /**********************
- SAVE + PLAYER STATE
+ PLAYER STATE
 **********************/
-const Player = {
-  coins: Number(localStorage.getItem('pc_coins')) || 0,
-  tool: null,
-  durability: 0,
-  health: 100,
-  inMine: false,
-  mineTimer: 0,
-  hunterSpawned: false,
-  questActive: false
-};
-
-function saveGame(){ localStorage.setItem('pc_coins',Player.coins); }
+const Player={coins:Number(localStorage.getItem('pc_coins'))||0,tool:null,durability:0,health:100,inMine:false,mineTimer:0,hunterSpawned:false};
+function saveGame(){localStorage.setItem('pc_coins',Player.coins);}
 
 /**********************
- MONKEY MOVEMENT
+ SAFE MONKEY MOVEMENT (QUEST FIXED)
 **********************/
 AFRAME.registerComponent('monkey-move',{
-  schema:{power:{default:0.12},drag:{default:0.9},gravity:{default:0.015}},
-  init(){ this.v=new THREE.Vector3(); },
+  schema:{speed:{default:0.06}},
+  init(){this.vel=new THREE.Vector3();},
   tick(){
-    const pads=navigator.getGamepads(); if(!pads) return;
-    let s=0; for(const p of pads){ if(!p) continue; s+=Math.abs(p.axes[1]||0)+Math.abs(p.axes[3]||0); }
-    if(s>0.25){ const d=new THREE.Vector3(); this.el.object3D.getWorldDirection(d); d.y=0; d.normalize(); this.v.add(d.multiplyScalar(s*this.data.power)); }
-    this.v.y-=this.data.gravity; this.v.multiplyScalar(this.data.drag);
-    this.el.object3D.position.add(this.v);
-    if(this.el.object3D.position.y<1.6){ this.el.object3D.position.y=1.6; this.v.y=0; }
+    const pads=navigator.getGamepads();
+    let forward=0;
+    for(const p of pads){ if(!p) continue; forward+=Math.abs(p.axes[3]||0); }
+    if(forward>0.15){
+      const d=new THREE.Vector3();
+      this.el.object3D.getWorldDirection(d);
+      d.y=0; d.normalize();
+      this.vel.add(d.multiplyScalar(forward*this.data.speed));
+    }
+    this.vel.multiplyScalar(0.85);
+    this.el.object3D.position.add(this.vel);
+    if(this.el.object3D.position.y<1.6) this.el.object3D.position.y=1.6;
   }
 });
 
 /**********************
- FOOTSTEPS
-**********************/
-AFRAME.registerComponent('footsteps',{ init(){ this.t=0; }, tick(time){ if(time-this.t>700){ step.components.sound.playSound(); this.t=time; }} });
-
-/**********************
  UI
 **********************/
-function updateUI(){ coinText.setAttribute('value',`Coins: ${Player.coins}`); toolText.setAttribute('value',Player.tool?`${Player.tool} (${Player.durability})`:'No tool'); healthText.setAttribute('value',`HP: ${Player.health}`); saveGame(); }
+function updateUI(){coinText.setAttribute('value',`Coins: ${Player.coins}`);toolText.setAttribute('value',Player.tool?`${Player.tool} (${Player.durability})`:'No tool');healthText.setAttribute('value',`HP: ${Player.health}`);saveGame();}
 
 /**********************
  SHOP
 **********************/
-AFRAME.registerComponent('shop-item',{ schema:{tool:{type:'string'},price:{type:'int'},durability:{type:'int'}}, init(){ this.el.addEventListener('click',()=>{ if(Player.coins<this.data.price) return alert('Not enough coins'); Player.coins-=this.data.price; Player.tool=this.data.tool; Player.durability=this.data.durability; updateUI(); }); }});
+AFRAME.registerComponent('shop-item',{schema:{tool:{type:'string'},price:{type:'int'},durability:{type:'int'}},init(){this.el.addEventListener('click',()=>{if(Player.coins<this.data.price)return;Player.coins-=this.data.price;Player.tool=this.data.tool;Player.durability=this.data.durability;updateUI();});}});
 
 /**********************
  CRYSTALS
 **********************/
-AFRAME.registerComponent('crystal',{ init(){ this.el.addEventListener('click',()=>{ if(!Player.tool) return; Player.durability--; Player.coins+=Player.tool==='pickaxe'?6:2; if(Player.durability<=0) Player.tool=null; updateUI(); this.el.remove(); }); }});
+AFRAME.registerComponent('crystal',{init(){this.el.addEventListener('click',()=>{if(!Player.tool)return;Player.durability--;Player.coins+=Player.tool==='pickaxe'?6:2;if(Player.durability<=0)Player.tool=null;updateUI();this.el.remove();});}});
 
 /**********************
- EXIT ORE (TELEPORT)
+ EXIT ORE
 **********************/
-AFRAME.registerComponent('exit-ore',{
-  init(){ this.el.addEventListener('click',()=>{
-    if(!Player.tool) return;
-    Player.durability--;
-    updateUI();
-    const rig=document.querySelector('#rig');
-    rig.object3D.position.set(0,1.6,0);
-    Player.inMine=false; Player.mineTimer=0; Player.hunterSpawned=false;
-    sky.setAttribute('color','#87ceeb'); sun.setAttribute('intensity','1.2'); amb.setAttribute('intensity','0.35');
-    mineAmb.components.sound.stopSound();
-    alert('You escaped the mines');
-  }); }
-});
+AFRAME.registerComponent('exit-ore',{init(){this.el.addEventListener('click',()=>{if(!Player.tool)return;const rig=document.querySelector('#rig');rig.object3D.position.set(0,1.6,0);sky.setAttribute('color','#87ceeb');sun.setAttribute('intensity','1.2');amb.setAttribute('intensity','0.35');alert('Escaped the mines');});}});
 
 /**********************
- NPC QUEST
+ MINE LIGHTING
 **********************/
-AFRAME.registerComponent('miner-npc',{ init(){ this.el.addEventListener('click',()=>{ if(!Player.questActive){ Player.questActive=true; alert('Quest: Mine 3 crystals'); } }); }});
-
-/**********************
- ENEMY
-**********************/
-AFRAME.registerComponent('enemy',{ init(){ this.cd=0; }, tick(time){ const r=document.querySelector('#rig'); const e=this.el.object3D.position; const p=r.object3D.position; e.lerp(p,0.0018); if(e.distanceTo(p)<1.4 && time-this.cd>2000){ Player.health-=5; this.cd=time; if(Player.health<=0){ alert('You escaped... barely'); location.reload(); } updateUI(); }} });
-
-/**********************
- MINE LOGIC
-**********************/
-AFRAME.registerComponent('mine-check',{ tick(time,dt){ const z=this.el.object3D.position.z;
-  if(z<-22){ if(!Player.inMine){ Player.inMine=true; Player.mineTimer=0; sky.setAttribute('color','#020202'); sun.setAttribute('intensity','0.08'); amb.setAttribute('intensity','0.08'); mineAmb.components.sound.playSound(); }
-    Player.mineTimer+=dt;
-    if(Player.mineTimer>600000 && !Player.hunterSpawned){ const h=document.createElement('a-entity'); h.setAttribute('enemy',''); h.setAttribute('geometry','primitive:sphere;radius:1'); h.setAttribute('material','color:#330000'); h.setAttribute('position','0 1 -70'); scene.appendChild(h); Player.hunterSpawned=true; scare.components.sound.playSound(); }
-  } else { if(Player.inMine){ Player.inMine=false; Player.mineTimer=0; Player.hunterSpawned=false; sky.setAttribute('color','#87ceeb'); sun.setAttribute('intensity','1.2'); amb.setAttribute('intensity','0.35'); mineAmb.components.sound.stopSound(); }} }});
-
-/**********************
- RANDOM CAVE
-**********************/
-AFRAME.registerComponent('random-cave',{ init(){ for(let i=0;i<12;i++){ const b=document.createElement('a-box'); b.setAttribute('width',6+Math.random()*6); b.setAttribute('height',5); b.setAttribute('depth',12); b.setAttribute('color','#1a1a1a'); b.setAttribute('position',`${(Math.random()*20)-10} 2 ${-40-(i*15)}`); this.el.appendChild(b);
-  if(Math.random()>0.6){ const c=document.createElement('a-sphere'); c.setAttribute('crystal',''); c.setAttribute('radius','0.3'); c.setAttribute('color','#55ffff'); c.setAttribute('position',`${(Math.random()*4)-2} 1 ${-40-(i*15)}`); this.el.appendChild(c); }
-  if(Math.random()>0.85){ const e=document.createElement('a-sphere'); e.setAttribute('exit-ore',''); e.setAttribute('radius','0.45'); e.setAttribute('color','#ff44ff'); e.setAttribute('emissive','#ff44ff'); e.setAttribute('position',`${(Math.random()*4)-2} 1 ${-40-(i*15)}`); this.el.appendChild(e); }
-}});
+AFRAME.registerComponent('mine-check',{tick(){const z=this.el.object3D.position.z;if(z<-18){sky.setAttribute('color','#020202');sun.setAttribute('intensity','0.05');amb.setAttribute('intensity','0.05');}else{sky.setAttribute('color','#87ceeb');sun.setAttribute('intensity','1.2');amb.setAttribute('intensity','0.35');}}});
 </script>
 </head>
 
 <body>
-<a-scene id="scene">
+<a-scene>
 
-<!-- SOUNDS -->
-<a-entity id="mineAmb" sound="src: https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav; loop:true"></a-entity>
-<a-entity id="scare" sound="src: https://cdn.aframe.io/basic-guide/audio/boom.wav"></a-entity>
-<a-entity id="step" sound="src: https://cdn.aframe.io/basic-guide/audio/footstep.wav"></a-entity>
-
-<!-- LIGHT -->
 <a-light id="sun" type="directional" intensity="1.2" position="5 10 5"></a-light>
 <a-light id="amb" type="ambient" intensity="0.35"></a-light>
 
-<!-- PLAYER -->
-<a-entity id="rig" position="0 1.6 0" monkey-move mine-check footsteps>
+<a-entity id="rig" position="0 1.6 0" monkey-move mine-check>
   <a-camera></a-camera>
-  <a-entity tracked-controls="hand:left"></a-entity>
-  <a-entity tracked-controls="hand:right"></a-entity>
+
+  <!-- HANDS FIXED -->
+  <a-entity laser-controls="hand: left"></a-entity>
+  <a-entity laser-controls="hand: right"></a-entity>
+
   <a-text id="coinText" position="0 -0.3 -0.6" width="2" align="center"></a-text>
   <a-text id="toolText" position="0 -0.45 -0.6" width="2" align="center"></a-text>
   <a-text id="healthText" position="0 -0.6 -0.6" width="2" align="center"></a-text>
 </a-entity>
 
-<!-- SKY -->
 <a-sky id="sky" color="#87ceeb"></a-sky>
-
-<!-- GROUND -->
 <a-plane rotation="-90 0 0" width="200" height="200" color="#6fdc6f"></a-plane>
 
 <!-- SHOP -->
 <a-entity position="6 0 -6">
   <a-box width="4" height="3" depth="4" color="#ffaa66"></a-box>
-  <a-text value="Shop" position="0 2.6 2.1" align="center"></a-text>
   <a-box position="-1 1 2.2" color="#8b5a2b" shop-item="tool: twig; price: 0; durability: 10"></a-box>
   <a-box position="0 1 2.2" color="#999" shop-item="tool: pickaxe; price: 100; durability: 999"></a-box>
-  <a-box position="1 1 2.2" color="#ffffaa" shop-item="tool: flashlight; price: 55; durability: 999"></a-box>
-</a-entity>
-
-<!-- NPC -->
-<a-entity position="-6 0 -6" miner-npc>
-  <a-cylinder height="2" radius="0.5" color="#555"></a-cylinder>
-  <a-sphere position="0 2 0" radius="0.6" color="#777"></a-sphere>
-  <a-text value="Miner" position="0 3 0" align="center"></a-text>
 </a-entity>
 
 <!-- MINE -->
 <a-box position="0 1 -20" depth="6" height="6" width="6" color="#333"></a-box>
-<a-text value="MINES" position="0 5 -20" align="center"></a-text>
-<a-entity random-cave></a-entity>
+<a-sphere crystal position="0 1 -40" radius="0.3" color="#55ffff"></a-sphere>
+<a-sphere exit-ore position="2 1 -55" radius="0.45" color="#ff44ff"></a-sphere>
 
 </a-scene>
 <script>updateUI();</script>
