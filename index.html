@@ -4,82 +4,210 @@
 <meta charset="UTF-8">
 <title>Pixel Company VR</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- A-FRAME -->
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
 <script>
-/**********************
- PLAYER STATE
-**********************/
-const Player={coins:Number(localStorage.getItem('pc_coins'))||0,tool:null,durability:0,health:100,inMine:false,mineTimer:0,hunterSpawned:false};
-function saveGame(){localStorage.setItem('pc_coins',Player.coins);}
+/*****************************************************************
+ * PIXEL COMPANY VR
+ * Single-file VR game for Meta Quest
+ * VERBOSE, SAFE, QUEST-FIRST CODE
+ *****************************************************************/
 
-/**********************
- SAFE MONKEY MOVEMENT (QUEST FIXED)
-**********************/
-AFRAME.registerComponent('monkey-move',{
-  schema:{speed:{default:0.06}},
-  init(){this.vel=new THREE.Vector3();},
+/***************************************************************
+ * PLAYER STATE (CLEAR + EXTENDABLE)
+ ***************************************************************/
+const PlayerState = {
+  coins: Number(localStorage.getItem('pc_coins')) || 0,
+  health: 100,
+
+  tool: null,          // twig | pickaxe | flashlight
+  durability: 0,
+
+  inMine: false,
+  mineTime: 0,
+  enemySpawned: false
+};
+
+function saveCoins(){
+  localStorage.setItem('pc_coins', PlayerState.coins);
+}
+
+/***************************************************************
+ * BASIC UI UPDATE SYSTEM
+ ***************************************************************/
+function updateUI(){
+  coinText.setAttribute('value', `Coins: ${PlayerState.coins}`);
+  toolText.setAttribute('value', PlayerState.tool ? `${PlayerState.tool} (${PlayerState.durability})` : 'No Tool');
+  healthText.setAttribute('value', `HP: ${PlayerState.health}`);
+  saveCoins();
+}
+
+/***************************************************************
+ * QUEST-SAFE CONTROLLER MOVEMENT (MONKEY STYLE)
+ * - Uses Quest-supported axes
+ * - Momentum based
+ * - Cannot lock player
+ ***************************************************************/
+AFRAME.registerComponent('controller-move',{
+  schema:{ speed:{default:0.04} },
+
+  init(){
+    this.velocity = new THREE.Vector3();
+  },
+
   tick(){
-    const pads=navigator.getGamepads();
-    let forward=0;
-    for(const p of pads){ if(!p) continue; forward+=Math.abs(p.axes[3]||0); }
-    if(forward>0.15){
-      const d=new THREE.Vector3();
-      this.el.object3D.getWorldDirection(d);
-      d.y=0; d.normalize();
-      this.vel.add(d.multiplyScalar(forward*this.data.speed));
+    const pads = navigator.getGamepads();
+    if(!pads) return;
+
+    let input = 0;
+    for(const p of pads){
+      if(!p || !p.axes) continue;
+      input += Math.abs(p.axes[3] || 0);
     }
-    this.vel.multiplyScalar(0.85);
-    this.el.object3D.position.add(this.vel);
-    if(this.el.object3D.position.y<1.6) this.el.object3D.position.y=1.6;
+
+    if(input > 0.1){
+      const dir = new THREE.Vector3();
+      this.el.object3D.getWorldDirection(dir);
+      dir.y = 0;
+      dir.normalize();
+      this.velocity.add(dir.multiplyScalar(input * this.data.speed));
+    }
+
+    this.velocity.multiplyScalar(0.85);
+    this.el.object3D.position.add(this.velocity);
+
+    if(this.el.object3D.position.y < 1.6){
+      this.el.object3D.position.y = 1.6;
+    }
   }
 });
 
-/**********************
- UI
-**********************/
-function updateUI(){coinText.setAttribute('value',`Coins: ${Player.coins}`);toolText.setAttribute('value',Player.tool?`${Player.tool} (${Player.durability})`:'No tool');healthText.setAttribute('value',`HP: ${Player.health}`);saveGame();}
+/***************************************************************
+ * SHOP SYSTEM
+ ***************************************************************/
+AFRAME.registerComponent('shop-item',{
+  schema:{ tool:{type:'string'}, price:{type:'int'}, durability:{type:'int'} },
 
-/**********************
- SHOP
-**********************/
-AFRAME.registerComponent('shop-item',{schema:{tool:{type:'string'},price:{type:'int'},durability:{type:'int'}},init(){this.el.addEventListener('click',()=>{if(Player.coins<this.data.price)return;Player.coins-=this.data.price;Player.tool=this.data.tool;Player.durability=this.data.durability;updateUI();});}});
+  init(){
+    this.el.addEventListener('click',()=>{
+      if(PlayerState.coins < this.data.price){
+        alert('Not enough coins');
+        return;
+      }
 
-/**********************
- CRYSTALS
-**********************/
-AFRAME.registerComponent('crystal',{init(){this.el.addEventListener('click',()=>{if(!Player.tool)return;Player.durability--;Player.coins+=Player.tool==='pickaxe'?6:2;if(Player.durability<=0)Player.tool=null;updateUI();this.el.remove();});}});
+      PlayerState.coins -= this.data.price;
+      PlayerState.tool = this.data.tool;
+      PlayerState.durability = this.data.durability;
+      updateUI();
+    });
+  }
+});
 
-/**********************
- EXIT ORE
-**********************/
-AFRAME.registerComponent('exit-ore',{init(){this.el.addEventListener('click',()=>{if(!Player.tool)return;const rig=document.querySelector('#rig');rig.object3D.position.set(0,1.6,0);sky.setAttribute('color','#87ceeb');sun.setAttribute('intensity','1.2');amb.setAttribute('intensity','0.35');alert('Escaped the mines');});}});
+/***************************************************************
+ * CRYSTAL MINING SYSTEM
+ ***************************************************************/
+AFRAME.registerComponent('crystal-ore',{
+  init(){
+    this.el.addEventListener('click',()=>{
+      if(!PlayerState.tool) return;
 
-/**********************
- MINE LIGHTING
-**********************/
-AFRAME.registerComponent('mine-check',{tick(){const z=this.el.object3D.position.z;if(z<-18){sky.setAttribute('color','#020202');sun.setAttribute('intensity','0.05');amb.setAttribute('intensity','0.05');}else{sky.setAttribute('color','#87ceeb');sun.setAttribute('intensity','1.2');amb.setAttribute('intensity','0.35');}}});
+      PlayerState.durability--;
+      PlayerState.coins += PlayerState.tool === 'pickaxe' ? 6 : 2;
+
+      if(PlayerState.durability <= 0){
+        PlayerState.tool = null;
+      }
+
+      updateUI();
+      this.el.remove();
+    });
+  }
+});
+
+/***************************************************************
+ * EXIT ORE (ESCAPE MECHANIC)
+ ***************************************************************/
+AFRAME.registerComponent('exit-ore',{
+  init(){
+    this.el.addEventListener('click',()=>{
+      if(!PlayerState.tool) return;
+
+      const rig = document.querySelector('#rig');
+      rig.object3D.position.set(0,1.6,0);
+
+      PlayerState.inMine = false;
+      PlayerState.mineTime = 0;
+      PlayerState.enemySpawned = false;
+
+      sky.setAttribute('color','#87ceeb');
+      sun.setAttribute('intensity','1.2');
+      ambient.setAttribute('intensity','0.35');
+
+      alert('You escaped the mines');
+    });
+  }
+});
+
+/***************************************************************
+ * MINE LIGHTING + TIMER SYSTEM
+ ***************************************************************/
+AFRAME.registerComponent('mine-check',{
+  tick(time,dt){
+    const z = this.el.object3D.position.z;
+
+    if(z < -18){
+      if(!PlayerState.inMine){
+        PlayerState.inMine = true;
+        PlayerState.mineTime = 0;
+
+        sky.setAttribute('color','#020202');
+        sun.setAttribute('intensity','0.05');
+        ambient.setAttribute('intensity','0.05');
+      }
+
+      PlayerState.mineTime += dt;
+
+    } else {
+      if(PlayerState.inMine){
+        PlayerState.inMine = false;
+        PlayerState.mineTime = 0;
+        PlayerState.enemySpawned = false;
+
+        sky.setAttribute('color','#87ceeb');
+        sun.setAttribute('intensity','1.2');
+        ambient.setAttribute('intensity','0.35');
+      }
+    }
+  }
+});
+
 </script>
 </head>
 
 <body>
 <a-scene>
 
-<a-light id="sun" type="directional" intensity="1.2" position="5 10 5"></a-light>
-<a-light id="amb" type="ambient" intensity="0.35"></a-light>
+<!-- LIGHTING -->
+<a-light id="sun" type="directional" position="5 10 5" intensity="1.2"></a-light>
+<a-light id="ambient" type="ambient" intensity="0.35"></a-light>
 
-<a-entity id="rig" position="0 1.6 0" monkey-move mine-check>
+<!-- PLAYER RIG -->
+<a-entity id="rig" position="0 1.6 0" controller-move mine-check>
   <a-camera></a-camera>
 
-  <!-- HANDS FIXED -->
+  <!-- QUEST-SAFE HANDS -->
   <a-entity laser-controls="hand: left"></a-entity>
   <a-entity laser-controls="hand: right"></a-entity>
 
+  <!-- HUD -->
   <a-text id="coinText" position="0 -0.3 -0.6" width="2" align="center"></a-text>
   <a-text id="toolText" position="0 -0.45 -0.6" width="2" align="center"></a-text>
   <a-text id="healthText" position="0 -0.6 -0.6" width="2" align="center"></a-text>
 </a-entity>
 
+<!-- WORLD -->
 <a-sky id="sky" color="#87ceeb"></a-sky>
 <a-plane rotation="-90 0 0" width="200" height="200" color="#6fdc6f"></a-plane>
 
@@ -88,14 +216,19 @@ AFRAME.registerComponent('mine-check',{tick(){const z=this.el.object3D.position.
   <a-box width="4" height="3" depth="4" color="#ffaa66"></a-box>
   <a-box position="-1 1 2.2" color="#8b5a2b" shop-item="tool: twig; price: 0; durability: 10"></a-box>
   <a-box position="0 1 2.2" color="#999" shop-item="tool: pickaxe; price: 100; durability: 999"></a-box>
+  <a-box position="1 1 2.2" color="#ffffaa" shop-item="tool: flashlight; price: 55; durability: 999"></a-box>
 </a-entity>
 
-<!-- MINE -->
+<!-- MINE ENTRANCE -->
 <a-box position="0 1 -20" depth="6" height="6" width="6" color="#333"></a-box>
-<a-sphere crystal position="0 1 -40" radius="0.3" color="#55ffff"></a-sphere>
+
+<!-- MINING AREA -->
+<a-sphere crystal-ore position="0 1 -40" radius="0.3" color="#55ffff"></a-sphere>
+<a-sphere crystal-ore position="-2 1 -45" radius="0.3" color="#55ffff"></a-sphere>
 <a-sphere exit-ore position="2 1 -55" radius="0.45" color="#ff44ff"></a-sphere>
 
 </a-scene>
+
 <script>updateUI();</script>
 </body>
 </html>
