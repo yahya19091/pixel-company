@@ -27,9 +27,7 @@
 
         this.prevHandPos = new THREE.Vector3();
         this.currHandPos = new THREE.Vector3();
-        this.hasPrevHand = false;
-
-        this.rightHandObj = null;
+        this.handReady = false;
 
         window.addEventListener('abuttondown', () => this.jump());
         window.addEventListener('xbuttondown', () => this.jump());
@@ -63,18 +61,19 @@
         const dt = dtMs / 1000;
         const rig = this.data.rig.object3D;
 
-        // Lazy‑grab right hand once it's created
-        if (!this.rightHandObj) {
-          const rightHandEl = document.querySelector('#rightHand');
-          if (!rightHandEl) return;
-          this.rightHandObj = rightHandEl.object3D;
-          return; // wait until next frame to have a valid matrixWorld
+        // Wait until right hand exists
+        if (!this.handReady) {
+          const rightHand = document.querySelector('#rightHand');
+          if (!rightHand) return;
+          this.rightHandObj = rightHand.object3D;
+          this.handReady = true;
+          return;
         }
 
         // Hand movement → locomotion
         this.currHandPos.setFromMatrixPosition(this.rightHandObj.matrixWorld);
 
-        if (this.hasPrevHand) {
+        if (!this.prevHandPos.equals(new THREE.Vector3())) {
           const dx = this.currHandPos.x - this.prevHandPos.x;
           const dy = this.currHandPos.y - this.prevHandPos.y;
           const dz = this.currHandPos.z - this.prevHandPos.z;
@@ -82,8 +81,6 @@
           this.vx -= dx * this.data.speed;
           this.vy -= dy * this.data.speed;
           this.vz -= dz * this.data.speed;
-        } else {
-          this.hasPrevHand = true;
         }
 
         this.prevHandPos.copy(this.currHandPos);
@@ -131,66 +128,39 @@
 
 <body>
   <a-scene background="color: #87CEEB">
-    
+
     <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
 
     <!-- PLAYER RIG -->
     <a-entity id="rig" position="0 0 0" gtag-movement="rig:#rig">
 
       <!-- CAMERA / HEAD -->
-      <a-camera position="0 0 0" look-controls camera="near: 0.1">
-        <!-- BODY (under camera, like your original) -->
-        <a-entity id="body" position="0 -0.6 0.4">
-          <!-- Chest -->
-          <a-box width="0.6" height="0.7" depth="0.35" color="#ffffff"></a-box>
+      <a-entity id="head" camera look-controls position="0 1.6 0"></a-entity>
 
-          <!-- Belly -->
-          <a-sphere radius="0.35" color="#ffffff" position="0 -0.1 0" scale="1 1.2 0.8"></a-sphere>
-
-          <!-- Neck -->
-          <a-cylinder radius="0.12" height="0.2" color="#ffffff" position="0 0.45 0"></a-cylinder>
-
-          <!-- Head -->
-          <a-sphere radius="0.28" color="#ffffff" position="0 0.75 0"></a-sphere>
-        </a-entity>
-      </a-camera>
+      <!-- BODY (now correctly attached to rig, not camera) -->
+      <a-entity id="body" position="0 0.9 0">
+        <a-box width="0.6" height="0.7" depth="0.35" color="#ffffff"></a-box>
+        <a-sphere radius="0.35" color="#ffffff" position="0 -0.1 0" scale="1 1.2 0.8"></a-sphere>
+        <a-cylinder radius="0.12" height="0.2" color="#ffffff" position="0 0.45 0"></a-cylinder>
+        <a-sphere radius="0.28" color="#ffffff" position="0 0.75 0"></a-sphere>
+      </a-entity>
 
       <!-- VR CONTROLLERS -->
       <a-entity id="lc" tracked-controls="hand: left"></a-entity>
       <a-entity id="rc" tracked-controls="hand: right"></a-entity>
 
-      <!-- LEFT HAND (more Gorilla Tag–like) -->
+      <!-- LEFT HAND -->
       <a-entity id="leftHand" hand-follow="target:#lc">
-
-        <!-- Long flat palm -->
-        <a-box width="0.22" height="0.06" depth="0.28" color="#ffffff"
-               position="0 0 0" rotation="0 0 0"></a-box>
-
-        <!-- Rounded front -->
-        <a-sphere radius="0.11" color="#ffffff"
-                  position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
-
-        <!-- Short wrist -->
-        <a-cylinder radius="0.05" height="0.14" color="#ffffff"
-                    rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
-
+        <a-box width="0.22" height="0.06" depth="0.28" color="#ffffff"></a-box>
+        <a-sphere radius="0.11" color="#ffffff" position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
+        <a-cylinder radius="0.05" height="0.14" color="#ffffff" rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
       </a-entity>
 
-      <!-- RIGHT HAND (more Gorilla Tag–like) -->
+      <!-- RIGHT HAND -->
       <a-entity id="rightHand" hand-follow="target:#rc">
-
-        <!-- Long flat palm -->
-        <a-box width="0.22" height="0.06" depth="0.28" color="#ffffff"
-               position="0 0 0" rotation="0 0 0"></a-box>
-
-        <!-- Rounded front -->
-        <a-sphere radius="0.11" color="#ffffff"
-                  position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
-
-        <!-- Short wrist -->
-        <a-cylinder radius="0.05" height="0.14" color="#ffffff"
-                    rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
-
+        <a-box width="0.22" height="0.06" depth="0.28" color="#ffffff"></a-box>
+        <a-sphere radius="0.11" color="#ffffff" position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
+        <a-cylinder radius="0.05" height="0.14" color="#ffffff" rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
       </a-entity>
 
     </a-entity>
