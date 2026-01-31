@@ -1,180 +1,163 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Pixel Company – Gorilla Locomotion (Merged)</title>
-    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pixel Company – Gorilla Locomotion Fixed</title>
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 
-    <script>
-/* =========================================================
-   HAND FOLLOW (CONTROLLERS → VISIBLE HANDS)
-========================================================= */
-AFRAME.registerComponent('hand-follow', {
-  schema: { target: { type: 'selector' } },
-  tick: function () {
-    if (!this.data.target) return;
-    this.el.object3D.position.copy(this.data.target.object3D.position);
-    this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
-  }
-});
-
-/* =========================================================
-   MERGED GORILLA PHYSICS (RAYCAST + MOMENTUM)
-========================================================= */
-AFRAME.registerComponent('gorilla-physics', {
-  schema: {
-    rig: { type: 'selector' },
-    strength: { type: 'number', default: 2.4 },
-    gravity: { type: 'number', default: -9.8 }
-  },
-
-  init: function () {
-    this.velocity = new THREE.Vector3();
-    this.prevPos = new THREE.Vector3();
-    this.currPos = new THREE.Vector3();
-    this.handVel = new THREE.Vector3();
-    this.grounded = true;
-
-    this.raycaster = new THREE.Raycaster();
-    this.downVec = new THREE.Vector3(0, -1, 0);
-    this.rayOrigin = new THREE.Vector3();
-
-    // Cache climbable objects ONCE (performance safe)
-    this.climbables = [];
-    this.el.sceneEl.addEventListener('loaded', () => {
-      const els = this.el.sceneEl.querySelectorAll('.climbable');
-      this.climbables = Array.from(els).map(e => e.object3D);
+  <script>
+    /* =========================================================
+       HAND FOLLOW (CONTROLLERS → VISIBLE HANDS)
+    ========================================================= */
+    AFRAME.registerComponent('hand-follow', {
+      schema: { target: { type: 'selector' } },
+      tick: function () {
+        if (!this.data.target) return;
+        this.el.object3D.position.copy(this.data.target.object3D.position);
+        this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
+      }
     });
 
-    this.cooldown = 0;
-  },
+    /* =========================================================
+       GORILLA PHYSICS (FIXED: CLAMPED & BALANCED)
+    ========================================================= */
+    AFRAME.registerComponent('gorilla-physics', {
+      schema: {
+        rig: { type: 'selector' },
+        strength: { type: 'number', default: 1.8 }, // Lowered for control
+        gravity: { type: 'number', default: -12 },   // Heavier feel
+        maxVelocity: { type: 'number', default: 8 }  // PREVENTS FLYING
+      },
 
-  tick: function (time, deltaTime) {
-    if (!deltaTime || !this.data.rig) return;
-
-    const rig = this.data.rig.object3D;
-    const dt = deltaTime / 1000;
-    if (this.cooldown > 0) this.cooldown -= dt;
-
-    this.el.object3D.getWorldPosition(this.currPos);
-    this.handVel.copy(this.currPos).sub(this.prevPos).divideScalar(dt);
-    this.prevPos.copy(this.currPos);
-
-    // Raycast downward from hand
-    this.rayOrigin.copy(this.currPos);
-    this.raycaster.set(this.rayOrigin, this.downVec);
-    const hits = this.raycaster.intersectObjects(this.climbables, true);
-
-    if (
-      hits.length > 0 &&
-      hits[0].distance < 0.15 &&
-      this.handVel.y < -0.15 &&
-      this.cooldown <= 0
-    ) {
-      this.velocity.x = -this.handVel.x * this.data.strength;
-      this.velocity.z = -this.handVel.z * this.data.strength;
-      this.velocity.y = -this.handVel.y * (this.data.strength * 1.3);
-      this.grounded = false;
-      this.cooldown = 0.08;
-
-      const gamepad = this.el.components['tracked-controls']?.controller;
-      if (gamepad?.hapticActuators?.length) {
-        gamepad.hapticActuators[0].pulse(0.4, 40);
-      }
-    }
-
-    if (!this.grounded) {
-      this.velocity.y += this.data.gravity * dt;
-      rig.position.addScaledVector(this.velocity, dt);
-
-      if (rig.position.y <= 0) {
-        rig.position.y = 0;
-        this.velocity.set(0, 0, 0);
+      init: function () {
+        this.velocity = new THREE.Vector3();
+        this.prevPos = new THREE.Vector3();
+        this.currPos = new THREE.Vector3();
+        this.handVel = new THREE.Vector3();
         this.grounded = true;
+        this.cooldown = 0;
+
+        this.raycaster = new THREE.Raycaster();
+        this.downVec = new THREE.Vector3(0, -1, 0);
+        this.rayOrigin = new THREE.Vector3();
+
+        // Cache climbable objects
+        this.climbables = [];
+        this.el.sceneEl.addEventListener('loaded', () => {
+          const els = this.el.sceneEl.querySelectorAll('.climbable');
+          this.climbables = Array.from(els).map(e => e.object3D);
+          // Force rig to floor level on spawn
+          if(this.data.rig) this.data.rig.object3D.position.y = 0;
+        });
+      },
+
+      tick: function (time, deltaTime) {
+        if (!deltaTime || !this.data.rig) return;
+
+        const rig = this.data.rig.object3D;
+        const dt = deltaTime / 1000;
+        if (this.cooldown > 0) this.cooldown -= dt;
+
+        this.el.object3D.getWorldPosition(this.currPos);
+        this.handVel.copy(this.currPos).sub(this.prevPos).divideScalar(dt);
+        this.prevPos.copy(this.currPos);
+
+        // Surface Detection
+        this.rayOrigin.copy(this.currPos);
+        this.raycaster.set(this.rayOrigin, this.downVec);
+        const hits = this.raycaster.intersectObjects(this.climbables, true);
+
+        // Trigger Push-off
+        if (hits.length > 0 && hits[0].distance < 0.15 && this.handVel.y < -0.15 && this.cooldown <= 0) {
+          
+          // Calculate and CLAMP velocity
+          let vX = -this.handVel.x * this.data.strength;
+          let vY = -this.handVel.y * (this.data.strength * 1.2);
+          let vZ = -this.handVel.z * this.data.strength;
+
+          this.velocity.x = THREE.MathUtils.clamp(vX, -this.data.maxVelocity, this.data.maxVelocity);
+          this.velocity.y = THREE.MathUtils.clamp(vY, -this.data.maxVelocity, this.data.maxVelocity);
+          this.velocity.z = THREE.MathUtils.clamp(vZ, -this.data.maxVelocity, this.data.maxVelocity);
+
+          this.grounded = false;
+          this.cooldown = 0.1; // Stability cooldown
+
+          // Haptics
+          const gamepad = this.el.components['tracked-controls']?.controller;
+          if (gamepad?.hapticActuators?.length) {
+            gamepad.hapticActuators[0].pulse(0.4, 40);
+          }
+        }
+
+        if (!this.grounded) {
+          this.velocity.y += this.data.gravity * dt;
+          rig.position.addScaledVector(this.velocity, dt);
+
+          // Floor stop
+          if (rig.position.y <= 0) {
+            rig.position.y = 0;
+            this.velocity.set(0, 0, 0);
+            this.grounded = true;
+          }
+
+          // Friction (Air resistance) - 0.95 makes it feel tighter
+          this.velocity.x *= 0.95;
+          this.velocity.z *= 0.95;
+        }
       }
+    });
 
-      this.velocity.x *= 0.98;
-      this.velocity.z *= 0.98;
-    }
-  }
-});
+    /* =========================================================
+       ZONE LOGIC
+    ========================================================= */
+    AFRAME.registerComponent('mine-zone', {
+      init: function () {
+        this.player = document.querySelector('#rig');
+        this.sky = document.querySelector('#sky');
+        this.inside = false;
+      },
+      tick: function () {
+        const d = this.player.object3D.position.distanceTo(this.el.object3D.position);
+        if (d < 8 && !this.inside) {
+          this.sky.setAttribute('color', '#050505');
+          this.inside = true;
+        } else if (d >= 8 && this.inside) {
+          this.sky.setAttribute('color', '#87CEEB');
+          this.inside = false;
+        }
+      }
+    });
+  </script>
+</head>
 
-/* =========================================================
-   MINE LIGHTING ZONE
-========================================================= */
-AFRAME.registerComponent('mine-zone', {
-  init: function () {
-    this.inside = false;
-    this.player = document.querySelector('#rig');
-    this.sky = document.querySelector('#sky');
-  },
-  tick: function () {
-    const p = this.player.object3D.position;
-    const m = this.el.object3D.position;
-    const d = p.distanceTo(m);
+<body>
+  <a-scene background="color: #87CEEB" xr-mode-ui="enabled: true">
+    
+    <a-entity id="rig" position="0 0 0">
+      <a-camera position="0 0 0" look-controls></a-camera>
 
-    if (d < 8 && !this.inside) {
-      this.sky.setAttribute('color', '#050505');
-      this.inside = true;
-    }
+      <a-entity id="l-ctrl" tracked-controls="hand: left"></a-entity>
+      <a-entity id="r-ctrl" tracked-controls="hand: right"></a-entity>
 
-    if (d >= 8 && this.inside) {
-      this.sky.setAttribute('color', '#87CEEB');
-      this.inside = false;
-    }
-  }
-});
+      <a-sphere radius="0.06" color="#FFD7B5" 
+                hand-follow="target: #l-ctrl" 
+                gorilla-physics="rig: #rig"></a-sphere>
 
-/* =========================================================
-   EXIT ORE (TELEPORT BACK TO SPAWN)
-========================================================= */
-AFRAME.registerComponent('exit-ore', {
-  init: function () {
-    this.rig = document.querySelector('#rig');
-  },
-  events: {
-    click: function () {
-      this.rig.object3D.position.set(0, 0, 0);
-    }
-  }
-});
-    </script>
-  </head>
+      <a-sphere radius="0.06" color="#FFD7B5" 
+                hand-follow="target: #r-ctrl" 
+                gorilla-physics="rig: #rig"></a-sphere>
+    </a-entity>
 
-  <body>
-    <a-scene background="color: #87CEEB" xr-mode-ui="enabled: true">
+    <a-sky id="sky" color="#87CEEB"></a-sky>
+    
+    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
 
-      <!-- PLAYER RIG -->
-      <a-entity id="rig" position="0 0 0">
-        <a-camera position="0 1.6 0"></a-camera>
+    <a-box class="climbable" position="2 0.5 -3" color="#777"></a-box>
+    <a-box class="climbable" mine-zone position="0 1.5 -10" width="6" height="3" depth="6" color="#222"></a-box>
 
-        <!-- CONTROLLERS (INVISIBLE INPUT) -->
-        <a-entity id="leftController" laser-controls="hand: left"></a-entity>
-        <a-entity id="rightController" laser-controls="hand: right"></a-entity>
+    <a-sphere class="climbable" position="0 0.5 -12" radius="0.4" color="#00FFFF"
+              onclick="document.querySelector('#rig').object3D.position.set(0,0,0)"></a-sphere>
 
-        <!-- VISIBLE HANDS -->
-        <a-sphere radius="0.06" color="#FFD7B5" hand-follow="target: #leftController"
-          gorilla-physics="rig: #rig"></a-sphere>
-
-        <a-sphere radius="0.06" color="#FFD7B5" hand-follow="target: #rightController"
-          gorilla-physics="rig: #rig"></a-sphere>
-      </a-entity>
-
-      <!-- SKY -->
-      <a-sky id="sky" color="#87CEEB"></a-sky>
-
-      <!-- FLOOR -->
-      <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
-
-      <!-- SURFACE OBJECTS -->
-      <a-box class="climbable" position="2 0.5 -3" depth="2" height="1" width="2" color="#777"></a-box>
-
-      <!-- MINE ENTRANCE -->
-      <a-box id="mine" class="climbable" mine-zone position="0 1 -10" width="6" height="3" depth="6" color="#222"></a-box>
-
-      <!-- EXIT ORE -->
-      <a-sphere class="climbable" exit-ore position="0 0.5 -12" radius="0.4" color="#00FFFF"></a-sphere>
-
-    </a-scene>
-  </body>
+  </a-scene>
+</body>
 </html>
