@@ -7,35 +7,22 @@
 
   <script>
     /* =========================================================
-       SNAP TURN (STABLE + TOGGLE)
+       SNAP TURN (WITH Y-TOGGLE)
     ========================================================= */
     AFRAME.registerComponent('snap-turn', {
-      schema: { 
-        rig: { type: 'selector' }, 
-        leftController: { type: 'selector' },
-        sensitivity: { default: 0.6 } // Increased deadzone to prevent accidental turns
-      },
+      schema: { rig: { type: 'selector' }, leftController: { type: 'selector' } },
       init: function () {
         this.canTurn = true;
         this.enabled = true;
-
         if (this.data.leftController) {
           this.data.leftController.addEventListener('ybuttondown', () => {
             this.enabled = !this.enabled;
-            // Haptic buzz on the RIGHT hand to signal toggle
-            this.el.components['tracked-controls']?.controller?.hapticActuators?.[0]?.pulse(0.3, 30);
           });
         }
-
         this.el.addEventListener('axismove', (e) => {
           if (!this.enabled) return;
           const x = e.detail.axis[2] || e.detail.axis[0];
-          
-          if (Math.abs(x) < this.data.sensitivity) {
-            this.canTurn = true;
-            return;
-          }
-
+          if (Math.abs(x) < 0.6) { this.canTurn = true; return; }
           if (this.canTurn) {
             const rot = this.data.rig.getAttribute('rotation');
             rot.y -= Math.sign(x) * 45;
@@ -47,24 +34,27 @@
     });
 
     /* =========================================================
-       GORILLA PHYSICS (REFINED)
+       TRUE GRAVITY PHYSICS (Detects Any Surface)
     ========================================================= */
     AFRAME.registerComponent('gorilla-physics', {
-      schema: { rig: { type: 'selector' }, strength: { default: 2.0 }, gravity: { default: -16 } },
+      schema: { rig: { type: 'selector' }, strength: { default: 2.0 }, gravity: { default: -18 } },
       init: function () {
-        this.vel = new THREE.Vector3();
+        this.vel = new THREE.Vector3(0, 0, 0);
         this.prev = new THREE.Vector3();
         this.curr = new THREE.Vector3();
         this.handVel = new THREE.Vector3();
         this.cooldown = 0;
+        
+        // Raycasters
         this.raycaster = new THREE.Raycaster();
-        this.down = new THREE.Vector3(0, -1, 0);
+        this.downVec = new THREE.Vector3(0, -1, 0);
         this.surfaces = [];
 
         this.el.sceneEl.addEventListener('loaded', () => {
           this.surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')].map(e => e.object3D);
         });
       },
+
       tick: function (t, dtMs) {
         if (!dtMs || !this.data.rig) return;
         const dt = dtMs / 1000;
@@ -72,63 +62,57 @@
 
         if (this.cooldown > 0) this.cooldown -= dt;
         
-        // Track hand velocity
         this.el.object3D.getWorldPosition(this.curr);
         this.handVel.copy(this.curr).sub(this.prev).divideScalar(dt);
         this.prev.copy(this.curr);
 
-        // Raycast logic
-        this.raycaster.set(this.curr, this.down);
-        const hits = this.raycaster.intersectObjects(this.surfaces, true);
-
-        // Movement Trigger (Must be moving down fast enough)
-        if (hits.length && hits[0].distance < 0.15 && this.handVel.y < -0.5 && this.cooldown <= 0) {
+        // 1. PUSH LOGIC (Hand to Surface)
+        this.raycaster.set(this.curr, this.downVec);
+        const handHits = this.raycaster.intersectObjects(this.surfaces, true);
+        if (handHits.length && handHits[0].distance < 0.15 && this.handVel.y < -0.4 && this.cooldown <= 0) {
           this.vel.x = -this.handVel.x * this.data.strength;
           this.vel.z = -this.handVel.z * this.data.strength;
-          this.vel.y = -this.handVel.y * (this.data.strength * 1.1);
-          
-          this.vel.clampScalar(-10, 10); // Hard cap on speed
-          this.cooldown = 0.1;
-          this.el.components['tracked-controls']?.controller?.hapticActuators?.[0]?.pulse(0.6, 40);
+          this.vel.y = -this.handVel.y * (this.data.strength * 1.2);
+          this.cooldown = 0.15;
         }
 
-        // Apply Gravity + Velocity
+        // 2. GRAVITY & FALLING LOGIC (Rig to Surface)
         this.vel.y += this.data.gravity * dt;
         rig.position.addScaledVector(this.vel, dt);
 
-        // Floor Collision Fix
-        if (rig.position.y < 0) {
-          rig.position.y = 0;
-          this.vel.y = 0;
-          this.vel.x *= 0.85; // Ground friction
-          this.vel.z *= 0.85;
-        }
+        // Check what is under the Player's FEET
+        const rigFloorRay = new THREE.Raycaster(rig.position, this.downVec);
+        const floorHits = rigFloorRay.intersectObjects(this.surfaces, true);
 
-        // Air Friction
+        if (floorHits.length > 0) {
+          const distToFloor = floorHits[0].distance;
+          // If we are touching or inside a surface
+          if (distToFloor < 0.1 || this.vel.y < 0 && distToFloor < 0.2) {
+            rig.position.y -= (distToFloor); // Snap to the surface height
+            this.vel.y = 0;
+            this.vel.x *= 0.85; // Friction
+            this.vel.z *= 0.85;
+          }
+        }
+        
         this.vel.x *= 0.96;
         this.vel.z *= 0.96;
       }
     });
 
     /* =========================================================
-       SMOOTH HAND FOLLOW
+       HAND FOLLOW
     ========================================================= */
     AFRAME.registerComponent('hand-follow', {
-      schema: { target: { type: 'selector' }, rig: { type: 'selector' }, maxLength: { default: 0.9 } },
+      schema: { target: { type: 'selector' }, rig: { type: 'selector' } },
       tick: function () {
         if (!this.data.target || !this.data.rig) return;
         const hand = this.el.object3D;
         const target = this.data.target.object3D;
         const rigPos = this.data.rig.object3D.position;
-
         let desired = new THREE.Vector3().copy(target.position);
         let offset = desired.clone().sub(rigPos);
-        
-        if (offset.length() > this.data.maxLength) {
-          offset.setLength(this.data.maxLength);
-          desired.copy(rigPos).add(offset);
-        }
-        
+        if (offset.length() > 0.8) { offset.setLength(0.8); desired.copy(rigPos).add(offset); }
         hand.position.lerp(desired, 0.5);
         hand.quaternion.slerp(target.quaternion, 0.5);
       }
@@ -139,9 +123,8 @@
 <body>
   <a-scene background="color: #87CEEB">
     
-    <a-entity id="rig" position="0 0 0" rotation="0 0 0">
+    <a-entity id="rig" position="0 0 0">
       <a-camera position="0 0 0" look-controls></a-camera>
-
       <a-entity id="lc" tracked-controls="hand: left"></a-entity>
       <a-entity id="rc" tracked-controls="hand: right" snap-turn="rig: #rig; leftController: #lc"></a-entity>
 
@@ -150,8 +133,10 @@
     </a-entity>
 
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
-    <a-box class="climbable" position="0 0.5 -5" color="#777"></a-box>
-    <a-box class="climbable" position="3 1 -7" width="2" height="2" depth="2" color="#444"></a-box>
+    
+    <a-box class="climbable" position="0 3 -8" width="5" height="0.5" depth="5" color="#777"></a-box>
+    
+    <a-box class="climbable" position="4 1 -4" width="1" height="2" depth="1" color="#444"></a-box>
 
   </a-scene>
 </body>
