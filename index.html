@@ -1,190 +1,180 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>Pixel Company</title>
+  <head>
+    <meta charset="utf-8" />
+    <title>Pixel Company – Gorilla Locomotion (Merged)</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 
-  <!-- A-Frame -->
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-
-  <!-- THREE is already included by A-Frame, but we use it explicitly -->
-</head>
-
-<body>
-
-<!-- ========================================================= -->
-<!-- ========================= SCENE ========================= -->
-<!-- ========================================================= -->
-
-<a-scene
-  background="color: #87a9c4"
-  renderer="antialias: true"
-  vr-mode-ui="enabled: true">
-
-  <!-- ======================================================= -->
-  <!-- ===================== PLAYER RIG ====================== -->
-  <!-- ======================================================= -->
-
-  <a-entity id="rig" position="0 1.6 6">
-
-    <!-- CAMERA -->
-    <a-camera></a-camera>
-
-    <!-- ================= LEFT CONTROLLER ================= -->
-    <a-entity
-      id="leftController"
-      laser-controls="hand: left"
-      visible="false"
-      gorilla-movement="rig: #rig">
-    </a-entity>
-
-    <!-- LEFT HAND (SMOOTH 3-FINGER) -->
-    <a-entity id="leftHand">
-      <a-sphere radius="0.045" color="#f2c9a5"></a-sphere>
-      <a-sphere position="-0.03 0.03 0.02" radius="0.02" color="#f2c9a5"></a-sphere>
-      <a-sphere position="0 0.035 0.025" radius="0.02" color="#f2c9a5"></a-sphere>
-      <a-sphere position="0.03 0.03 0.02" radius="0.02" color="#f2c9a5"></a-sphere>
-    </a-entity>
-
-    <!-- ================= RIGHT CONTROLLER ================= -->
-    <a-entity
-      id="rightController"
-      laser-controls="hand: right"
-      visible="false"
-      gorilla-movement="rig: #rig">
-    </a-entity>
-
-    <!-- RIGHT HAND -->
-    <a-entity id="rightHand">
-      <a-sphere radius="0.045" color="#f2c9a5"></a-sphere>
-      <a-sphere position="-0.03 0.03 0.02" radius="0.02" color="#f2c9a5"></a-sphere>
-      <a-sphere position="0 0.035 0.025" radius="0.02" color="#f2c9a5"></a-sphere>
-      <a-sphere position="0.03 0.03 0.02" radius="0.02" color="#f2c9a5"></a-sphere>
-    </a-entity>
-
-  </a-entity>
-
-  <!-- ======================================================= -->
-  <!-- ======================= WORLD ========================= -->
-  <!-- ======================================================= -->
-
-  <!-- GROUND -->
-  <a-plane
-    rotation="-90 0 0"
-    width="200"
-    height="200"
-    color="#4c7a3d">
-  </a-plane>
-
-  <!-- SPAWN BUILDING -->
-  <a-box position="0 1 -4" width="6" height="2" depth="6" color="#888"></a-box>
-
-  <!-- ====================== MINES ========================== -->
-
-  <a-box id="mineEntrance" position="12 1 -12" width="4" height="3" depth="4" color="#333"></a-box>
-
-  <a-box position="12 1 -18" width="6" height="3" depth="12" color="#222"></a-box>
-
-  <a-light id="mineLight" type="ambient" intensity="0"></a-light>
-
-  <!-- EXIT ORE -->
-  <a-sphere id="exitOre" position="12 1 -22" radius="0.5" color="#00ffff"></a-sphere>
-
-</a-scene>
-
-<!-- ========================================================= -->
-<!-- ===================== GAME LOGIC ======================== -->
-<!-- ========================================================= -->
-
-<script>
+    <script>
 /* =========================================================
-   HAND FOLLOW (CONTROLLER → HAND MESH)
+   HAND FOLLOW (CONTROLLERS → VISIBLE HANDS)
 ========================================================= */
-
 AFRAME.registerComponent('hand-follow', {
-  schema: { controller: {type: 'selector'} },
+  schema: { target: { type: 'selector' } },
   tick: function () {
-    if (!this.data.controller) return;
-    this.el.object3D.position.copy(this.data.controller.object3D.position);
-    this.el.object3D.quaternion.copy(this.data.controller.object3D.quaternion);
+    if (!this.data.target) return;
+    this.el.object3D.position.copy(this.data.target.object3D.position);
+    this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
   }
 });
 
-document.getElementById('leftHand')
-  .setAttribute('hand-follow', { controller: '#leftController' });
-
-document.getElementById('rightHand')
-  .setAttribute('hand-follow', { controller: '#rightController' });
-
 /* =========================================================
-   GORILLA MOVEMENT (BASED ON YOUR CODE)
+   MERGED GORILLA PHYSICS (RAYCAST + MOMENTUM)
 ========================================================= */
-
-AFRAME.registerComponent('gorilla-movement', {
+AFRAME.registerComponent('gorilla-physics', {
   schema: {
-    speed: { type: 'number', default: 2.0 },
-    rig: { type: 'selector' }
+    rig: { type: 'selector' },
+    strength: { type: 'number', default: 2.4 },
+    gravity: { type: 'number', default: -9.8 }
   },
 
   init: function () {
-    this.prev = new THREE.Vector3();
-    this.curr = new THREE.Vector3();
-    this.delta = new THREE.Vector3();
+    this.velocity = new THREE.Vector3();
+    this.prevPos = new THREE.Vector3();
+    this.currPos = new THREE.Vector3();
+    this.handVel = new THREE.Vector3();
+    this.grounded = true;
+
+    this.raycaster = new THREE.Raycaster();
+    this.downVec = new THREE.Vector3(0, -1, 0);
+    this.rayOrigin = new THREE.Vector3();
+
+    // Cache climbable objects ONCE (performance safe)
+    this.climbables = [];
+    this.el.sceneEl.addEventListener('loaded', () => {
+      const els = this.el.sceneEl.querySelectorAll('.climbable');
+      this.climbables = Array.from(els).map(e => e.object3D);
+    });
+
+    this.cooldown = 0;
   },
 
-  tick: function () {
-    if (!this.data.rig) return;
+  tick: function (time, deltaTime) {
+    if (!deltaTime || !this.data.rig) return;
 
-    // Track controller movement
-    this.el.object3D.getWorldPosition(this.curr);
-    this.delta.copy(this.curr).sub(this.prev);
+    const rig = this.data.rig.object3D;
+    const dt = deltaTime / 1000;
+    if (this.cooldown > 0) this.cooldown -= dt;
 
-    // Ground check (simple but stable)
-    const rigPos = this.data.rig.object3D.position;
-    const grounded = rigPos.y <= 1.6;
+    this.el.object3D.getWorldPosition(this.currPos);
+    this.handVel.copy(this.currPos).sub(this.prevPos).divideScalar(dt);
+    this.prevPos.copy(this.currPos);
 
-    if (grounded) {
-      // Push opposite to hand movement
-      rigPos.x -= this.delta.x * this.data.speed;
-      rigPos.z -= this.delta.z * this.data.speed;
+    // Raycast downward from hand
+    this.rayOrigin.copy(this.currPos);
+    this.raycaster.set(this.rayOrigin, this.downVec);
+    const hits = this.raycaster.intersectObjects(this.climbables, true);
+
+    if (
+      hits.length > 0 &&
+      hits[0].distance < 0.15 &&
+      this.handVel.y < -0.15 &&
+      this.cooldown <= 0
+    ) {
+      this.velocity.x = -this.handVel.x * this.data.strength;
+      this.velocity.z = -this.handVel.z * this.data.strength;
+      this.velocity.y = -this.handVel.y * (this.data.strength * 1.3);
+      this.grounded = false;
+      this.cooldown = 0.08;
+
+      const gamepad = this.el.components['tracked-controls']?.controller;
+      if (gamepad?.hapticActuators?.length) {
+        gamepad.hapticActuators[0].pulse(0.4, 40);
+      }
     }
 
-    // Gravity clamp
-    rigPos.y = 1.6;
+    if (!this.grounded) {
+      this.velocity.y += this.data.gravity * dt;
+      rig.position.addScaledVector(this.velocity, dt);
 
-    // Save for next frame
-    this.prev.copy(this.curr);
+      if (rig.position.y <= 0) {
+        rig.position.y = 0;
+        this.velocity.set(0, 0, 0);
+        this.grounded = true;
+      }
+
+      this.velocity.x *= 0.98;
+      this.velocity.z *= 0.98;
+    }
   }
 });
 
 /* =========================================================
-   MINE DARKNESS
+   MINE LIGHTING ZONE
 ========================================================= */
-
 AFRAME.registerComponent('mine-zone', {
+  init: function () {
+    this.inside = false;
+    this.player = document.querySelector('#rig');
+    this.sky = document.querySelector('#sky');
+  },
   tick: function () {
-    const rig = document.getElementById('rig');
-    const light = document.getElementById('mineLight');
-    if (!rig) return;
+    const p = this.player.object3D.position;
+    const m = this.el.object3D.position;
+    const d = p.distanceTo(m);
 
-    if (rig.object3D.position.z < -14) {
-      light.setAttribute('intensity', 0.2);
-    } else {
-      light.setAttribute('intensity', 0);
+    if (d < 8 && !this.inside) {
+      this.sky.setAttribute('color', '#050505');
+      this.inside = true;
+    }
+
+    if (d >= 8 && this.inside) {
+      this.sky.setAttribute('color', '#87CEEB');
+      this.inside = false;
     }
   }
 });
 
-document.querySelector('a-scene').setAttribute('mine-zone', '');
-
 /* =========================================================
-   EXIT ORE TELEPORT
+   EXIT ORE (TELEPORT BACK TO SPAWN)
 ========================================================= */
-
-document.getElementById('exitOre').addEventListener('click', () => {
-  document.getElementById('rig').setAttribute('position', '0 1.6 6');
+AFRAME.registerComponent('exit-ore', {
+  init: function () {
+    this.rig = document.querySelector('#rig');
+  },
+  events: {
+    click: function () {
+      this.rig.object3D.position.set(0, 0, 0);
+    }
+  }
 });
-</script>
+    </script>
+  </head>
 
-</body>
+  <body>
+    <a-scene background="color: #87CEEB" xr-mode-ui="enabled: true">
+
+      <!-- PLAYER RIG -->
+      <a-entity id="rig" position="0 0 0">
+        <a-camera position="0 1.6 0"></a-camera>
+
+        <!-- CONTROLLERS (INVISIBLE INPUT) -->
+        <a-entity id="leftController" laser-controls="hand: left"></a-entity>
+        <a-entity id="rightController" laser-controls="hand: right"></a-entity>
+
+        <!-- VISIBLE HANDS -->
+        <a-sphere radius="0.06" color="#FFD7B5" hand-follow="target: #leftController"
+          gorilla-physics="rig: #rig"></a-sphere>
+
+        <a-sphere radius="0.06" color="#FFD7B5" hand-follow="target: #rightController"
+          gorilla-physics="rig: #rig"></a-sphere>
+      </a-entity>
+
+      <!-- SKY -->
+      <a-sky id="sky" color="#87CEEB"></a-sky>
+
+      <!-- FLOOR -->
+      <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
+
+      <!-- SURFACE OBJECTS -->
+      <a-box class="climbable" position="2 0.5 -3" depth="2" height="1" width="2" color="#777"></a-box>
+
+      <!-- MINE ENTRANCE -->
+      <a-box id="mine" class="climbable" mine-zone position="0 1 -10" width="6" height="3" depth="6" color="#222"></a-box>
+
+      <!-- EXIT ORE -->
+      <a-sphere class="climbable" exit-ore position="0 0.5 -12" radius="0.4" color="#00FFFF"></a-sphere>
+
+    </a-scene>
+  </body>
 </html>
