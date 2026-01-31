@@ -7,7 +7,7 @@
 
   <script>
     /* =========================================================
-       SNAP TURN + Y-TOGGLE
+       SNAP TURN + Y-TOGGLE (REFINED)
     ========================================================= */
     AFRAME.registerComponent('snap-turn', {
       schema: { leftController: { type: 'selector' }, rightController: { type: 'selector' } },
@@ -16,7 +16,9 @@
         this.canTurn = true;
         this.data.leftController.addEventListener('ybuttondown', () => {
           this.enabled = !this.enabled;
-          this.data.rightController.components['tracked-controls']?.controller?.hapticActuators?.[0]?.pulse(0.2, 50);
+          if(this.data.rightController.components['tracked-controls']?.controller) {
+            this.data.rightController.components['tracked-controls'].controller.hapticActuators[0].pulse(0.2, 50);
+          }
         });
         this.data.rightController.addEventListener('axismove', (e) => {
           if (!this.enabled) return;
@@ -33,7 +35,7 @@
     });
 
     /* =========================================================
-       TRUE GORILLA PHYSICS (ANTI-BOUNCE)
+       GORILLA PHYSICS (NO-FLOAT EDITION)
     ========================================================= */
     AFRAME.registerComponent('gorilla-physics', {
       schema: { rig: { type: 'selector' }, strength: { default: 2.3 }, gravity: { default: -25 } },
@@ -61,40 +63,30 @@
         this.handVel.copy(this.curr).sub(this.prev).divideScalar(dt);
         this.prev.copy(this.curr);
 
-        // --- HAND PUSH LOGIC ---
         this.raycaster.set(this.curr, this.downVec);
         const handHits = this.raycaster.intersectObjects(this.surfaces, true);
         
         if (handHits.length && handHits[0].distance < 0.2) {
-          this.el.setAttribute('color', 'white'); 
           if (this.handVel.y < -0.4 && this.cooldown <= 0) {
             this.vel.x = -this.handVel.x * this.data.strength;
             this.vel.z = -this.handVel.z * this.data.strength;
             this.vel.y = -this.handVel.y * (this.data.strength * 1.4);
-            this.cooldown = 0.2; // Slightly longer cooldown to prevent double-jumping
+            this.cooldown = 0.2;
           }
-        } else {
-          this.el.setAttribute('color', '#cccccc');
         }
 
-        // --- GRAVITY & COLLISION ---
         this.vel.y += this.data.gravity * dt;
         rig.position.addScaledVector(this.vel, dt);
 
-        // Check ground from Torso bottom
         const groundRay = new THREE.Raycaster(rig.position, this.downVec);
         const groundHits = groundRay.intersectObjects(this.surfaces, true);
 
         if (groundHits.length > 0) {
           const dist = groundHits[0].distance;
-          const floorThreshold = 0.65; // Height where gorilla "sits"
-
-          if (dist < floorThreshold) {
-            // Hard snap to floor and KILL vertical velocity
-            rig.position.y += (floorThreshold - dist);
-            if (this.vel.y < 0) this.vel.y = 0; 
-            
-            // Apply Friction
+          // Set floor threshold high enough so model touches
+          if (dist < 0.1) {
+            rig.position.y -= dist; 
+            if (this.vel.y < 0) this.vel.y = 0;
             this.vel.x *= 0.8;
             this.vel.z *= 0.8;
           }
@@ -103,7 +95,6 @@
           this.vel.y = 0;
         }
 
-        // Air Resistance
         this.vel.x *= 0.95;
         this.vel.z *= 0.95;
       }
@@ -121,21 +112,23 @@
 </head>
 
 <body>
-  <a-scene background="color: #222">
+  <a-scene background="color: #87CEEB" renderer="antialias: true">
     
+    <a-entity light="type: ambient; color: #BBB; intensity: 0.8"></a-entity>
+    <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-1 1 1"></a-entity>
+
     <a-entity id="rig" position="0 0.1 0" snap-turn="leftController:#lc; rightController:#rc">
       
-      <a-camera position="0 0 0" look-controls>
-          <a-sphere position="0 0 -0.05" radius="0.15" color="white"></a-sphere>
-          <a-box position="0 -0.02 -0.16" width="0.16" height="0.12" depth="0.05" color="#ccc"></a-box>
-          <a-sphere position="0.14 0.05 -0.05" radius="0.035" color="white"></a-sphere>
-          <a-sphere position="-0.14 0.05 -0.05" radius="0.035" color="white"></a-sphere>
-          
-          <a-sphere id="torso" position="0 -0.4 0" radius="0.28" color="white" scale="1 1.2 0.8">
-              <a-box position="0 0 -0.22" width="0.22" height="0.35" depth="0.05" color="#bbb"></a-box>
-          </a-sphere>
-          
-          <a-cylinder position="0 -0.6 0.2" rotation="40 0 0" radius="0.02" height="0.4" color="white"></a-cylinder>
+      <a-camera position="0 0 0" look-controls camera="near: 0.05">
+          <a-entity position="0 0 0.15">
+            <a-sphere position="0 0 -0.1" radius="0.15" color="white"></a-sphere> <a-box position="0 -0.02 -0.22" width="0.16" height="0.12" depth="0.05" color="#ccc"></a-box> <a-sphere position="0.14 0.05 -0.1" radius="0.035" color="white"></a-sphere> <a-sphere position="-0.14 0.05 -0.1" radius="0.035" color="white"></a-sphere>
+            
+            <a-sphere position="0 -0.5 -0.1" radius="0.3" color="white" scale="1 1.1 0.8">
+                <a-box position="0 0 -0.25" width="0.22" height="0.35" depth="0.05" color="#bbb"></a-box>
+            </a-sphere>
+            
+            <a-cylinder position="0 -0.7 0.1" rotation="40 0 0" radius="0.02" height="0.4" color="white"></a-cylinder>
+          </a-entity>
       </a-camera>
       
       <a-entity id="lc" tracked-controls="hand: left"></a-entity>
@@ -148,8 +141,8 @@
              hand-follow="target:#rc" gorilla-physics="rig:#rig"></a-box>
     </a-entity>
 
-    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#111"></a-plane>
-    <a-box class="climbable" position="0 0.5 -5" width="4" height="1" depth="4" color="#222"></a-box>
+    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
+    <a-box class="climbable" position="0 0.5 -5" width="4" height="1" depth="4" color="#777"></a-box>
 
   </a-scene>
 </body>
