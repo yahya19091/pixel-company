@@ -67,7 +67,7 @@
           .map(e => e.object3D);
 
         if (this.data.rig)
-          this.data.rig.object3D.position.y = 0;
+          this.data.rig.object3D.position.y = 2; // spawn above ground
       });
     },
 
@@ -118,8 +118,8 @@
       rig.position.addScaledVector(this.vel, dt);
 
       // Floor collision
-      if (rig.position.y < 0) {
-        rig.position.y = 0;
+      if (rig.position.y < 0.01) {
+        rig.position.y = 0.01;
         this.vel.y = 0;
         this.vel.x *= 0.85;
         this.vel.z *= 0.85;
@@ -135,16 +135,20 @@
 
 <body>
   <a-scene background="color: #87CEEB">
-    
-    <!-- PLAYER RIG -->
-    <a-entity id="rig" position="0 0 0">
-      <a-camera></a-camera>
+
+    <!-- PLAYER RIG (falls with gravity) -->
+    <a-entity id="rig" position="0 2 0">
+
+      <!-- HEAD (camera stays 1.6m above rig) -->
+      <a-entity id="head" position="0 1.6 0">
+        <a-camera></a-camera>
+      </a-entity>
 
       <!-- VR Controllers -->
       <a-entity id="lc" tracked-controls="hand: left"></a-entity>
       <a-entity id="rc" tracked-controls="hand: right"></a-entity>
 
-      <!-- Hands (physics + follow) -->
+      <!-- Hands -->
       <a-sphere radius="0.06" color="#222"
         hand-follow="target:#lc; rig:#rig"
         gorilla-physics="rig:#rig">
@@ -154,6 +158,7 @@
         hand-follow="target:#rc; rig:#rig"
         gorilla-physics="rig:#rig">
       </a-sphere>
+
     </a-entity>
 
     <!-- WORLD -->
