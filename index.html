@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>Pixel Company - Full Movement System</title>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
   <script>
     AFRAME.registerComponent('gtag-movement', {
       schema: {
@@ -14,27 +15,27 @@
         jumpForce: { default: 8 },
         dashPower: { default: 15 }
       },
+
       init: function () {
-        this.vx = 0; this.vy = 0; this.vz = 0;
+        this.vx = 0;
+        this.vy = 0;
+        this.vz = 0;
+
         this.jumpsLeft = 2;
         this.canDash = true;
         this.grounded = false;
-        
+
         this.prevHandPos = new THREE.Vector3();
         this.currHandPos = new THREE.Vector3();
-        
-        // Map Jump to A/X buttons
+
+        this.rightHandObj = document.querySelector('#rightHand').object3D;
+
         window.addEventListener('abuttondown', () => this.jump());
         window.addEventListener('xbuttondown', () => this.jump());
-        
-        // Map Dash to Grips
         window.addEventListener('gripdown', () => this.dash());
-
-        this.raycaster = new THREE.Raycaster();
-        this.downVec = new THREE.Vector3(0, -1, 0);
       },
 
-      jump: function() {
+      jump: function () {
         if (this.jumpsLeft > 0) {
           this.vy = this.data.jumpForce;
           this.jumpsLeft--;
@@ -42,98 +43,142 @@
         }
       },
 
-      dash: function() {
+      dash: function () {
         if (!this.canDash) return;
-        let mag = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+
+        const mag = Math.hypot(this.vx, this.vz);
         if (mag > 0.1) {
           this.vx = (this.vx / mag) * this.data.dashPower;
           this.vz = (this.vz / mag) * this.data.dashPower;
-          this.canDash = false;
-          setTimeout(() => this.canDash = true, 800);
         }
+
+        this.canDash = false;
+        setTimeout(() => this.canDash = true, 800);
       },
 
       tick: function (t, dtMs) {
         if (!dtMs || !this.data.rig) return;
+
         const dt = dtMs / 1000;
         const rig = this.data.rig.object3D;
 
-        // 1. ARM SWING LOGIC (from your code)
-        // We calculate velocity based on controller movement
-        let hand = document.querySelector('#rightHand').object3D;
-        this.currHandPos.setFromMatrixPosition(hand.matrixWorld);
-        
-        if (this.prevHandPos.length() !== 0) {
-          let dx = this.currHandPos.x - this.prevHandPos.x;
-          let dy = this.currHandPos.y - this.prevHandPos.y;
-          let dz = this.currHandPos.z - this.prevHandPos.z;
+        // Hand movement → locomotion
+        this.currHandPos.setFromMatrixPosition(this.rightHandObj.matrixWorld);
 
-          // Apply swing force (inverted like your code)
+        if (!this.prevHandPos.equals(new THREE.Vector3())) {
+          const dx = this.currHandPos.x - this.prevHandPos.x;
+          const dy = this.currHandPos.y - this.prevHandPos.y;
+          const dz = this.currHandPos.z - this.prevHandPos.z;
+
           this.vx -= dx * this.data.speed;
           this.vy -= dy * this.data.speed;
           this.vz -= dz * this.data.speed;
         }
+
         this.prevHandPos.copy(this.currHandPos);
 
-        // 2. GRAVITY
+        // Gravity
         if (!this.grounded) {
           this.vy += this.data.gravity * dt;
         }
 
-        // 3. APPLY POSITION
+        // Apply movement
         rig.position.x += this.vx;
-        rig.position.y += this.vy * dt * 10; // Scaled for 3D space
+        rig.position.y += this.vy * dt * 10;
         rig.position.z += this.vz;
 
-        // 4. FLOOR COLLISION (Zero Bounce)
+        // Ground collision
         if (rig.position.y <= 0) {
           rig.position.y = 0;
           this.vy = 0;
           this.grounded = true;
-          this.jumpsLeft = 2; // Reset jumps on ground
+          this.jumpsLeft = 2;
         } else {
           this.grounded = false;
         }
 
-        // 5. FRICTION
+        // Friction
         this.vx *= this.data.friction;
         this.vz *= this.data.friction;
-        this.vy *= 0.99; 
+        this.vy *= 0.99;
       }
     });
 
-    // Helper for hand tracking
     AFRAME.registerComponent('hand-follow', {
       schema: { target: { type: 'selector' } },
       tick: function () {
         if (!this.data.target) return;
-        this.el.object3D.position.copy(this.data.target.object3D.position);
-        this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
+        const targetObj = this.data.target.object3D;
+        const obj = this.el.object3D;
+
+        obj.position.copy(targetObj.position);
+        obj.quaternion.copy(targetObj.quaternion);
       }
     });
   </script>
 </head>
+
 <body>
   <a-scene background="color: #87CEEB">
-    <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
     
+    <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
+
+    <!-- PLAYER RIG -->
     <a-entity id="rig" position="0 0 0" gtag-movement="rig:#rig">
-      <a-camera position="0 0 0" look-controls camera="near: 0.1">
-          <a-entity position="0 -0.6 0.4">
-            <a-sphere position="0 0.5 -0.1" radius="0.15" color="white"></a-sphere>
-            <a-box position="0 0.48 -0.22" width="0.16" height="0.12" depth="0.05" color="#ccc"></a-box>
-            <a-sphere position="0 0.1 -0.1" radius="0.3" color="white" scale="1 1.1 0.8"></a-sphere>
-          </a-entity>
-      </a-camera>
-      
+
+      <!-- CAMERA / HEAD -->
+      <a-camera position="0 1.6 0" look-controls camera="near: 0.1"></a-camera>
+
+      <!-- BODY (Gorilla Tag Style) -->
+      <a-entity id="body" position="0 0.8 0">
+        <!-- Chest -->
+        <a-box width="0.6" height="0.7" depth="0.35" color="#ffffff"></a-box>
+
+        <!-- Belly -->
+        <a-sphere radius="0.35" color="#ffffff" position="0 -0.1 0" scale="1 1.2 0.8"></a-sphere>
+
+        <!-- Neck -->
+        <a-cylinder radius="0.12" height="0.2" color="#ffffff" position="0 0.45 0"></a-cylinder>
+
+        <!-- Head -->
+        <a-sphere radius="0.28" color="#ffffff" position="0 0.75 0"></a-sphere>
+      </a-entity>
+
+      <!-- VR CONTROLLERS -->
       <a-entity id="lc" tracked-controls="hand: left"></a-entity>
       <a-entity id="rc" tracked-controls="hand: right"></a-entity>
 
-      <a-box id="leftHand" width="0.1" height="0.05" depth="0.1" color="white" hand-follow="target:#lc"></a-box>
-      <a-box id="rightHand" width="0.1" height="0.05" depth="0.1" color="white" hand-follow="target:#rc"></a-box>
+      <!-- LEFT HAND (Gorilla Tag Style) -->
+      <a-entity id="leftHand" hand-follow="target:#lc">
+
+        <a-box width="0.16" height="0.08" depth="0.22" color="#ffffff"></a-box>
+
+        <a-sphere radius="0.10" color="#ffffff"
+                  position="0 0.04 -0.10" scale="1 0.7 1"></a-sphere>
+
+        <a-cylinder radius="0.05" height="0.12" color="#ffffff"
+                    rotation="90 0 0" position="0 -0.06 0.10"></a-cylinder>
+
+      </a-entity>
+
+      <!-- RIGHT HAND (Gorilla Tag Style) -->
+      <a-entity id="rightHand" hand-follow="target:#rc">
+
+        <a-box width="0.16" height="0.08" depth="0.22" color="#ffffff"></a-box>
+
+        <a-sphere radius="0.10" color="#ffffff"
+                  position="0 0.04 -0.10" scale="1 0.7 1"></a-sphere>
+
+        <a-cylinder radius="0.05" height="0.12" color="#ffffff"
+                    rotation="90 0 0" position="0 -0.06 0.10"></a-cylinder>
+
+      </a-entity>
+
     </a-entity>
 
+    <!-- FLOOR -->
     <a-plane rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
+
   </a-scene>
 </body>
 </html>
