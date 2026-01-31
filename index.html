@@ -7,40 +7,39 @@
 
   <script>
     /* =========================================================
-       SNAP TURN (WITH TOGGLE LOGIC)
+       SNAP TURN (STABLE + TOGGLE)
     ========================================================= */
     AFRAME.registerComponent('snap-turn', {
       schema: { 
         rig: { type: 'selector' }, 
         leftController: { type: 'selector' },
-        sensitivity: { default: 0.5 } 
+        sensitivity: { default: 0.6 } // Increased deadzone to prevent accidental turns
       },
       init: function () {
         this.canTurn = true;
-        this.enabled = true; // Snap turn starts ON
+        this.enabled = true;
 
-        // Listen for Y Button on the Left Controller to toggle
         if (this.data.leftController) {
           this.data.leftController.addEventListener('ybuttondown', () => {
             this.enabled = !this.enabled;
-            console.log("Snap Turn Enabled:", this.enabled);
-            // Optional: Add a haptic pulse to confirm the toggle
-            this.el.components['tracked-controls']?.controller?.hapticActuators?.[0]?.pulse(0.2, 20);
+            // Haptic buzz on the RIGHT hand to signal toggle
+            this.el.components['tracked-controls']?.controller?.hapticActuators?.[0]?.pulse(0.3, 30);
           });
         }
 
         this.el.addEventListener('axismove', (e) => {
-          if (!this.enabled) return; // Do nothing if toggled off
-
+          if (!this.enabled) return;
           const x = e.detail.axis[2] || e.detail.axis[0];
+          
           if (Math.abs(x) < this.data.sensitivity) {
             this.canTurn = true;
             return;
           }
+
           if (this.canTurn) {
-            const rotation = this.data.rig.getAttribute('rotation');
-            rotation.y -= Math.sign(x) * 45;
-            this.data.rig.setAttribute('rotation', rotation);
+            const rot = this.data.rig.getAttribute('rotation');
+            rot.y -= Math.sign(x) * 45;
+            this.data.rig.setAttribute('rotation', rot);
             this.canTurn = false;
           }
         });
@@ -48,7 +47,7 @@
     });
 
     /* =========================================================
-       GORILLA PHYSICS
+       GORILLA PHYSICS (REFINED)
     ========================================================= */
     AFRAME.registerComponent('gorilla-physics', {
       schema: { rig: { type: 'selector' }, strength: { default: 2.0 }, gravity: { default: -16 } },
@@ -72,41 +71,50 @@
         const rig = this.data.rig.object3D;
 
         if (this.cooldown > 0) this.cooldown -= dt;
+        
+        // Track hand velocity
         this.el.object3D.getWorldPosition(this.curr);
         this.handVel.copy(this.curr).sub(this.prev).divideScalar(dt);
         this.prev.copy(this.curr);
 
+        // Raycast logic
         this.raycaster.set(this.curr, this.down);
         const hits = this.raycaster.intersectObjects(this.surfaces, true);
 
-        if (hits.length && hits[0].distance < 0.15 && this.handVel.y < -0.4 && this.cooldown <= 0) {
+        // Movement Trigger (Must be moving down fast enough)
+        if (hits.length && hits[0].distance < 0.15 && this.handVel.y < -0.5 && this.cooldown <= 0) {
           this.vel.x = -this.handVel.x * this.data.strength;
           this.vel.z = -this.handVel.z * this.data.strength;
-          this.vel.y = -this.handVel.y * (this.data.strength * 1.2);
-          this.vel.clampScalar(-9, 9);
-          this.cooldown = 0.15;
-          this.el.components['tracked-controls']?.controller?.hapticActuators?.[0]?.pulse(0.5, 40);
+          this.vel.y = -this.handVel.y * (this.data.strength * 1.1);
+          
+          this.vel.clampScalar(-10, 10); // Hard cap on speed
+          this.cooldown = 0.1;
+          this.el.components['tracked-controls']?.controller?.hapticActuators?.[0]?.pulse(0.6, 40);
         }
 
+        // Apply Gravity + Velocity
         this.vel.y += this.data.gravity * dt;
         rig.position.addScaledVector(this.vel, dt);
 
+        // Floor Collision Fix
         if (rig.position.y < 0) {
           rig.position.y = 0;
           this.vel.y = 0;
-          this.vel.x *= 0.8; 
-          this.vel.z *= 0.8;
+          this.vel.x *= 0.85; // Ground friction
+          this.vel.z *= 0.85;
         }
-        this.vel.x *= 0.95;
-        this.vel.z *= 0.95;
+
+        // Air Friction
+        this.vel.x *= 0.96;
+        this.vel.z *= 0.96;
       }
     });
 
     /* =========================================================
-       HAND FOLLOW
+       SMOOTH HAND FOLLOW
     ========================================================= */
     AFRAME.registerComponent('hand-follow', {
-      schema: { target: { type: 'selector' }, rig: { type: 'selector' }, maxLength: { default: 0.85 } },
+      schema: { target: { type: 'selector' }, rig: { type: 'selector' }, maxLength: { default: 0.9 } },
       tick: function () {
         if (!this.data.target || !this.data.rig) return;
         const hand = this.el.object3D;
@@ -115,12 +123,14 @@
 
         let desired = new THREE.Vector3().copy(target.position);
         let offset = desired.clone().sub(rigPos);
+        
         if (offset.length() > this.data.maxLength) {
           offset.setLength(this.data.maxLength);
           desired.copy(rigPos).add(offset);
         }
-        hand.position.lerp(desired, 0.4);
-        hand.quaternion.slerp(target.quaternion, 0.4);
+        
+        hand.position.lerp(desired, 0.5);
+        hand.quaternion.slerp(target.quaternion, 0.5);
       }
     });
   </script>
@@ -129,19 +139,19 @@
 <body>
   <a-scene background="color: #87CEEB">
     
-    <a-entity id="rig" position="0 0 0">
+    <a-entity id="rig" position="0 0 0" rotation="0 0 0">
       <a-camera position="0 0 0" look-controls></a-camera>
 
       <a-entity id="lc" tracked-controls="hand: left"></a-entity>
-      
       <a-entity id="rc" tracked-controls="hand: right" snap-turn="rig: #rig; leftController: #lc"></a-entity>
 
       <a-sphere radius="0.06" color="#222" hand-follow="target:#lc; rig:#rig" gorilla-physics="rig:#rig"></a-sphere>
       <a-sphere radius="0.06" color="#222" hand-follow="target:#rc; rig:#rig" gorilla-physics="rig:#rig"></a-sphere>
     </a-entity>
 
-    <a-plane class="climbable" rotation="-90 0 0" width="50" height="50" color="#3A5F0B"></a-plane>
+    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" color="#777"></a-box>
+    <a-box class="climbable" position="3 1 -7" width="2" height="2" depth="2" color="#444"></a-box>
 
   </a-scene>
 </body>
