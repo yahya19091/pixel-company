@@ -34,7 +34,7 @@
     });
 
     /* =========================================================
-       TRUE GRAVITY PHYSICS (Detects Any Surface)
+       GORILLA PHYSICS (TRUE GRAVITY)
     ========================================================= */
     AFRAME.registerComponent('gorilla-physics', {
       schema: { rig: { type: 'selector' }, strength: { default: 2.0 }, gravity: { default: -18 } },
@@ -44,8 +44,6 @@
         this.curr = new THREE.Vector3();
         this.handVel = new THREE.Vector3();
         this.cooldown = 0;
-        
-        // Raycasters
         this.raycaster = new THREE.Raycaster();
         this.downVec = new THREE.Vector3(0, -1, 0);
         this.surfaces = [];
@@ -61,12 +59,11 @@
         const rig = this.data.rig.object3D;
 
         if (this.cooldown > 0) this.cooldown -= dt;
-        
         this.el.object3D.getWorldPosition(this.curr);
         this.handVel.copy(this.curr).sub(this.prev).divideScalar(dt);
         this.prev.copy(this.curr);
 
-        // 1. PUSH LOGIC (Hand to Surface)
+        // Push Logic
         this.raycaster.set(this.curr, this.downVec);
         const handHits = this.raycaster.intersectObjects(this.surfaces, true);
         if (handHits.length && handHits[0].distance < 0.15 && this.handVel.y < -0.4 && this.cooldown <= 0) {
@@ -76,23 +73,25 @@
           this.cooldown = 0.15;
         }
 
-        // 2. GRAVITY & FALLING LOGIC (Rig to Surface)
+        // Apply Gravity
         this.vel.y += this.data.gravity * dt;
         rig.position.addScaledVector(this.vel, dt);
 
-        // Check what is under the Player's FEET
+        // Surface Detection
         const rigFloorRay = new THREE.Raycaster(rig.position, this.downVec);
         const floorHits = rigFloorRay.intersectObjects(this.surfaces, true);
 
         if (floorHits.length > 0) {
-          const distToFloor = floorHits[0].distance;
-          // If we are touching or inside a surface
-          if (distToFloor < 0.1 || this.vel.y < 0 && distToFloor < 0.2) {
-            rig.position.y -= (distToFloor); // Snap to the surface height
+          const dist = floorHits[0].distance;
+          if (dist < 0.1) {
+            rig.position.y -= dist;
             this.vel.y = 0;
-            this.vel.x *= 0.85; // Friction
+            this.vel.x *= 0.85;
             this.vel.z *= 0.85;
           }
+        } else if (rig.position.y < 0) { // Safety net
+          rig.position.y = 0;
+          this.vel.y = 0;
         }
         
         this.vel.x *= 0.96;
@@ -101,20 +100,14 @@
     });
 
     /* =========================================================
-       HAND FOLLOW
+       HAND FOLLOW (FIXED)
     ========================================================= */
     AFRAME.registerComponent('hand-follow', {
       schema: { target: { type: 'selector' }, rig: { type: 'selector' } },
       tick: function () {
-        if (!this.data.target || !this.data.rig) return;
-        const hand = this.el.object3D;
-        const target = this.data.target.object3D;
-        const rigPos = this.data.rig.object3D.position;
-        let desired = new THREE.Vector3().copy(target.position);
-        let offset = desired.clone().sub(rigPos);
-        if (offset.length() > 0.8) { offset.setLength(0.8); desired.copy(rigPos).add(offset); }
-        hand.position.lerp(desired, 0.5);
-        hand.quaternion.slerp(target.quaternion, 0.5);
+        if (!this.data.target) return;
+        this.el.object3D.position.copy(this.data.target.object3D.position);
+        this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
       }
     });
   </script>
@@ -123,8 +116,9 @@
 <body>
   <a-scene background="color: #87CEEB">
     
-    <a-entity id="rig" position="0 0 0">
+    <a-entity id="rig" position="0 1 0">
       <a-camera position="0 0 0" look-controls></a-camera>
+      
       <a-entity id="lc" tracked-controls="hand: left"></a-entity>
       <a-entity id="rc" tracked-controls="hand: right" snap-turn="rig: #rig; leftController: #lc"></a-entity>
 
@@ -133,10 +127,8 @@
     </a-entity>
 
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
-    
-    <a-box class="climbable" position="0 3 -8" width="5" height="0.5" depth="5" color="#777"></a-box>
-    
-    <a-box class="climbable" position="4 1 -4" width="1" height="2" depth="1" color="#444"></a-box>
+    <a-box class="climbable" position="0 0.5 -5" color="#777"></a-box>
+    <a-box class="climbable" position="0 4 -12" width="10" height="0.5" depth="10" color="#444"></a-box>
 
   </a-scene>
 </body>
