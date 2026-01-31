@@ -2,171 +2,63 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Pixel Company - Full Movement System</title>
+  <title>GTAG Test Rig</title>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
   <script>
-    AFRAME.registerComponent('gtag-movement', {
-      schema: {
-        rig: { type: 'selector' },
-        speed: { default: 0.3 },
-        friction: { default: 0.95 },
-        gravity: { default: -18 },
-        jumpForce: { default: 8 },
-        dashPower: { default: 15 }
+    AFRAME.registerComponent('swing-move', {
+      schema: { rig: { type: 'selector' }, speed: { default: 1 } },
+
+      init() {
+        this.prev = new THREE.Vector3()
+        this.curr = new THREE.Vector3()
+        this.ready = false
       },
 
-      init: function () {
-        this.vx = 0;
-        this.vy = 0;
-        this.vz = 0;
+      tick() {
+        const rig = this.data.rig.object3D
+        const hand = document.querySelector('#rightHand')
 
-        this.jumpsLeft = 2;
-        this.canDash = true;
-        this.grounded = false;
+        if (!hand) return
+        const obj = hand.object3D
 
-        this.prevHandPos = new THREE.Vector3();
-        this.currHandPos = new THREE.Vector3();
-        this.handReady = false;
-
-        window.addEventListener('abuttondown', () => this.jump());
-        window.addEventListener('xbuttondown', () => this.jump());
-        window.addEventListener('gripdown', () => this.dash());
-      },
-
-      jump: function () {
-        if (this.jumpsLeft > 0) {
-          this.vy = this.data.jumpForce;
-          this.jumpsLeft--;
-          this.grounded = false;
-        }
-      },
-
-      dash: function () {
-        if (!this.canDash) return;
-
-        const mag = Math.hypot(this.vx, this.vz);
-        if (mag > 0.1) {
-          this.vx = (this.vx / mag) * this.data.dashPower;
-          this.vz = (this.vz / mag) * this.data.dashPower;
+        // Wait until controller has a real position
+        if (!this.ready) {
+          this.prev.setFromMatrixPosition(obj.matrixWorld)
+          this.ready = true
+          return
         }
 
-        this.canDash = false;
-        setTimeout(() => this.canDash = true, 800);
-      },
+        this.curr.setFromMatrixPosition(obj.matrixWorld)
 
-      tick: function (t, dtMs) {
-        if (!dtMs || !this.data.rig) return;
+        const dx = this.curr.x - this.prev.x
+        const dz = this.curr.z - this.prev.z
 
-        const dt = dtMs / 1000;
-        const rig = this.data.rig.object3D;
+        // Move opposite of hand swing
+        rig.position.x -= dx * this.data.speed
+        rig.position.z -= dz * this.data.speed
 
-        // Wait until right hand exists
-        if (!this.handReady) {
-          const rightHand = document.querySelector('#rightHand');
-          if (!rightHand) return;
-          this.rightHandObj = rightHand.object3D;
-          this.handReady = true;
-          return;
-        }
-
-        // Hand movement → locomotion
-        this.currHandPos.setFromMatrixPosition(this.rightHandObj.matrixWorld);
-
-        if (!this.prevHandPos.equals(new THREE.Vector3())) {
-          const dx = this.currHandPos.x - this.prevHandPos.x;
-          const dy = this.currHandPos.y - this.prevHandPos.y;
-          const dz = this.currHandPos.z - this.prevHandPos.z;
-
-          this.vx -= dx * this.data.speed;
-          this.vy -= dy * this.data.speed;
-          this.vz -= dz * this.data.speed;
-        }
-
-        this.prevHandPos.copy(this.currHandPos);
-
-        // Gravity
-        if (!this.grounded) {
-          this.vy += this.data.gravity * dt;
-        }
-
-        // Apply movement
-        rig.position.x += this.vx;
-        rig.position.y += this.vy * dt * 10;
-        rig.position.z += this.vz;
-
-        // Ground collision
-        if (rig.position.y <= 0) {
-          rig.position.y = 0;
-          this.vy = 0;
-          this.grounded = true;
-          this.jumpsLeft = 2;
-        } else {
-          this.grounded = false;
-        }
-
-        // Friction
-        this.vx *= this.data.friction;
-        this.vz *= this.data.friction;
-        this.vy *= 0.99;
+        this.prev.copy(this.curr)
       }
-    });
-
-    AFRAME.registerComponent('hand-follow', {
-      schema: { target: { type: 'selector' } },
-      tick: function () {
-        if (!this.data.target) return;
-        const targetObj = this.data.target.object3D;
-        const obj = this.el.object3D;
-
-        obj.position.copy(targetObj.position);
-        obj.quaternion.copy(targetObj.quaternion);
-      }
-    });
+    })
   </script>
 </head>
 
 <body>
-  <a-scene background="color: #87CEEB">
+  <a-scene>
 
-    <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
+    <a-entity id="rig" position="0 0 0" swing-move="rig:#rig; speed:2">
 
-    <!-- PLAYER RIG -->
-    <a-entity id="rig" position="0 0 0" gtag-movement="rig:#rig">
+      <!-- Head -->
+      <a-entity camera look-controls position="0 1.6 0"></a-entity>
 
-      <!-- CAMERA / HEAD -->
-      <a-entity id="head" camera look-controls position="0 1.6 0"></a-entity>
-
-      <!-- BODY (now correctly attached to rig, not camera) -->
-      <a-entity id="body" position="0 0.9 0">
-        <a-box width="0.6" height="0.7" depth="0.35" color="#ffffff"></a-box>
-        <a-sphere radius="0.35" color="#ffffff" position="0 -0.1 0" scale="1 1.2 0.8"></a-sphere>
-        <a-cylinder radius="0.12" height="0.2" color="#ffffff" position="0 0.45 0"></a-cylinder>
-        <a-sphere radius="0.28" color="#ffffff" position="0 0.75 0"></a-sphere>
-      </a-entity>
-
-      <!-- VR CONTROLLERS -->
-      <a-entity id="lc" tracked-controls="hand: left"></a-entity>
-      <a-entity id="rc" tracked-controls="hand: right"></a-entity>
-
-      <!-- LEFT HAND -->
-      <a-entity id="leftHand" hand-follow="target:#lc">
-        <a-box width="0.22" height="0.06" depth="0.28" color="#ffffff"></a-box>
-        <a-sphere radius="0.11" color="#ffffff" position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
-        <a-cylinder radius="0.05" height="0.14" color="#ffffff" rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
-      </a-entity>
-
-      <!-- RIGHT HAND -->
-      <a-entity id="rightHand" hand-follow="target:#rc">
-        <a-box width="0.22" height="0.06" depth="0.28" color="#ffffff"></a-box>
-        <a-sphere radius="0.11" color="#ffffff" position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
-        <a-cylinder radius="0.05" height="0.14" color="#ffffff" rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
-      </a-entity>
+      <!-- Controllers -->
+      <a-entity id="leftHand" tracked-controls="hand: left"></a-entity>
+      <a-entity id="rightHand" tracked-controls="hand: right"></a-entity>
 
     </a-entity>
 
-    <!-- FLOOR -->
-    <a-plane rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
+    <a-plane rotation="-90 0 0" width="100" height="100" color="green"></a-plane>
 
   </a-scene>
 </body>
