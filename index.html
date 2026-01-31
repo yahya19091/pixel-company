@@ -2,63 +2,126 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>GTAG Test Rig</title>
+  <title>Gorilla Tag Movement - Quest Version</title>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
   <script>
-    AFRAME.registerComponent('swing-move', {
-      schema: { rig: { type: 'selector' }, speed: { default: 1 } },
+    AFRAME.registerComponent('gtag-movement', {
+      schema: {
+        rig: { type: 'selector' },
+        speed: { default: 1.2 },
+        friction: { default: 0.92 },
+        gravity: { default: -20 },
+        jumpForce: { default: 10 }
+      },
 
       init() {
+        this.vx = 0
+        this.vy = 0
+        this.vz = 0
+
         this.prev = new THREE.Vector3()
         this.curr = new THREE.Vector3()
         this.ready = false
+
+        this.rightHand = null
       },
 
       tick() {
         const rig = this.data.rig.object3D
-        const hand = document.querySelector('#rightHand')
 
-        if (!hand) return
-        const obj = hand.object3D
+        // Wait until controller exists
+        if (!this.rightHand) {
+          const h = document.querySelector('#rightHand')
+          if (!h) return
+          this.rightHand = h.object3D
+          return
+        }
 
-        // Wait until controller has a real position
+        // Get controller world position
+        this.curr.setFromMatrixPosition(this.rightHand.matrixWorld)
+
+        // First frame: store initial position
         if (!this.ready) {
-          this.prev.setFromMatrixPosition(obj.matrixWorld)
+          this.prev.copy(this.curr)
           this.ready = true
           return
         }
 
-        this.curr.setFromMatrixPosition(obj.matrixWorld)
-
+        // Hand movement delta
         const dx = this.curr.x - this.prev.x
         const dz = this.curr.z - this.prev.z
 
         // Move opposite of hand swing
-        rig.position.x -= dx * this.data.speed
-        rig.position.z -= dz * this.data.speed
+        this.vx -= dx * this.data.speed
+        this.vz -= dz * this.data.speed
 
         this.prev.copy(this.curr)
+
+        // Apply movement
+        rig.position.x += this.vx
+        rig.position.z += this.vz
+
+        // Friction
+        this.vx *= this.data.friction
+        this.vz *= this.data.friction
+      }
+    })
+
+    AFRAME.registerComponent('hand-follow', {
+      schema: { target: { type: 'selector' } },
+      tick() {
+        if (!this.data.target) return
+        const t = this.data.target.object3D
+        const o = this.el.object3D
+        o.position.copy(t.position)
+        o.quaternion.copy(t.quaternion)
       }
     })
   </script>
 </head>
 
 <body>
-  <a-scene>
+  <a-scene renderer="antialias: true" background="color: #87CEEB">
 
-    <a-entity id="rig" position="0 0 0" swing-move="rig:#rig; speed:2">
+    <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
 
-      <!-- Head -->
-      <a-entity camera look-controls position="0 1.6 0"></a-entity>
+    <!-- RIG (root of all movement) -->
+    <a-entity id="rig" position="0 0 0" gtag-movement="rig:#rig">
 
-      <!-- Controllers -->
-      <a-entity id="leftHand" tracked-controls="hand: left"></a-entity>
-      <a-entity id="rightHand" tracked-controls="hand: right"></a-entity>
+      <!-- HEAD (Quest headset controls this) -->
+      <a-entity id="head" camera look-controls position="0 1.6 0"></a-entity>
+
+      <!-- BODY (follows rig, not camera) -->
+      <a-entity id="body" position="0 0.8 0">
+        <a-box width="0.6" height="0.7" depth="0.35" color="white"></a-box>
+        <a-sphere radius="0.35" color="white" position="0 -0.1 0" scale="1 1.2 0.8"></a-sphere>
+        <a-cylinder radius="0.12" height="0.2" color="white" position="0 0.45 0"></a-cylinder>
+        <a-sphere radius="0.28" color="white" position="0 0.75 0"></a-sphere>
+      </a-entity>
+
+      <!-- CONTROLLERS -->
+      <a-entity id="lc" tracked-controls="hand: left"></a-entity>
+      <a-entity id="rc" tracked-controls="hand: right"></a-entity>
+
+      <!-- LEFT HAND (Gorilla Tag paddle) -->
+      <a-entity id="leftHand" hand-follow="target:#lc">
+        <a-box width="0.22" height="0.06" depth="0.28" color="white"></a-box>
+        <a-sphere radius="0.11" color="white" position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
+        <a-cylinder radius="0.05" height="0.14" color="white" rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
+      </a-entity>
+
+      <!-- RIGHT HAND (Gorilla Tag paddle) -->
+      <a-entity id="rightHand" hand-follow="target:#rc">
+        <a-box width="0.22" height="0.06" depth="0.28" color="white"></a-box>
+        <a-sphere radius="0.11" color="white" position="0 0.02 -0.14" scale="1 0.6 1"></a-sphere>
+        <a-cylinder radius="0.05" height="0.14" color="white" rotation="90 0 0" position="0 -0.05 0.14"></a-cylinder>
+      </a-entity>
 
     </a-entity>
 
-    <a-plane rotation="-90 0 0" width="100" height="100" color="green"></a-plane>
+    <!-- FLOOR -->
+    <a-plane rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
 
   </a-scene>
 </body>
