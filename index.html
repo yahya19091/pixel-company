@@ -5,10 +5,20 @@
   <title>Gorilla Physics - Single File</title>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
+  <!-- CAMERA OFFSET FIX -->
   <script>
-  /* =========================================================
-     HAND FOLLOW (Smooth + Arm Length Limit)
-     ========================================================= */
+  AFRAME.registerComponent('camera-offset', {
+    schema: { height: { default: 1.6 } },
+
+    tick: function () {
+      // Force camera to stay at a fixed height above the rig
+      this.el.object3D.position.y = this.data.height;
+    }
+  });
+  </script>
+
+  <!-- HAND FOLLOW -->
+  <script>
   AFRAME.registerComponent('hand-follow', {
     schema: {
       target: { type: 'selector' },
@@ -40,10 +50,10 @@
       hand.quaternion.slerp(target.quaternion, this.data.smooth);
     }
   });
+  </script>
 
-  /* =========================================================
-     GORILLA PHYSICS (Minimal Fix Version)
-     ========================================================= */
+  <!-- GORILLA PHYSICS -->
+  <script>
   AFRAME.registerComponent('gorilla-physics', {
     schema: {
       rig: { type: 'selector' },
@@ -66,8 +76,9 @@
         this.surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')]
           .map(e => e.object3D);
 
+        // Spawn above ground
         if (this.data.rig)
-          this.data.rig.object3D.position.y = 2; // spawn above ground
+          this.data.rig.object3D.position.y = 2;
       });
     },
 
@@ -139,8 +150,8 @@
     <!-- PLAYER RIG (falls with gravity) -->
     <a-entity id="rig" position="0 2 0">
 
-      <!-- HEAD (camera stays 1.6m above rig) -->
-      <a-entity id="head" position="0 1.6 0">
+      <!-- HEAD (camera stays 1.6m above rig, not real height) -->
+      <a-entity id="head" camera-offset="height:1.6">
         <a-camera></a-camera>
       </a-entity>
 
