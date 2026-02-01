@@ -218,13 +218,15 @@
   });
   </script>
 
-  <!-- ===== VR GRAB ===== -->
+  <!-- ===== VR GRAB (on controllers) ===== -->
   <script>
   AFRAME.registerComponent("vr-grab", {
     schema: { hand: { type: "selector" } },
 
     init: function () {
       this.grabbing = false;
+      this.gamepad = null;
+
       this.el.addEventListener("controllerconnected", (evt) => {
         this.gamepad = evt.detail.component.data.gamepad;
       });
@@ -312,22 +314,25 @@
     <a-entity id="player"
               networked="template:#avatar-template; attachTemplateToLocal:false">
 
-      <a-entity id="rig" position="0 3 0" snap-turn gorilla-physics>
+      <a-entity id="rig" position="0 1.6 0" snap-turn gorilla-physics>
         <a-camera look-controls camera="near:0.05"></a-camera>
 
-        <!-- Controller tracking -->
-        <a-entity id="lc" tracked-controls="hand:left"></a-entity>
-        <a-entity id="rc" tracked-controls="hand:right"></a-entity>
+        <!-- Controllers with vr-grab -->
+        <a-entity id="lc"
+                  tracked-controls="hand:left"
+                  vr-grab="hand:#leftHand"></a-entity>
+
+        <a-entity id="rc"
+                  tracked-controls="hand:right"
+                  vr-grab="hand:#rightHand"></a-entity>
 
         <!-- Gorilla Tag hands -->
-        <a-entity id="leftHand" hand-follow="target:#lc" vr-grab="hand:#leftHand">
+        <a-entity id="leftHand" hand-follow="target:#lc">
           <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
-          <a-sphere radius="0.15" visible="false"></a-sphere>
         </a-entity>
 
-        <a-entity id="rightHand" hand-follow="target:#rc" vr-grab="hand:#rightHand">
+        <a-entity id="rightHand" hand-follow="target:#rc">
           <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
-          <a-sphere radius="0.15" visible="false"></a-sphere>
         </a-entity>
 
         <!-- Body -->
@@ -339,10 +344,10 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- PICKAXE -->
+    <!-- PICKAXE (right in front of you) -->
     <a-entity id="pickaxe"
               gltf-model="url(pickaxe.glb)"
-              position="0 0.6 -2"
+              position="0 1.4 -0.6"
               rotation="0 45 0"
               scale="0.08 0.08 0.08"
               pickup
