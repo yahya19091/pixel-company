@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Pixel Company – Full Game (Box Test)</title>
+  <title>Pixel Company – Full Game</title>
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
@@ -190,7 +190,6 @@
   AFRAME.registerComponent("pickup", {
     init: function () {
       this.isGrabbed = false;
-      this.el.classList.add("grabbable");
     },
     events: {
       'grab-attempt': function (evt) {
@@ -205,14 +204,10 @@
 
         if (handPos.distanceTo(itemPos) < 0.6) {
           this.isGrabbed = true;
-          this.grabber = handEl;
-
           handEl.object3D.attach(this.el.object3D);
 
           this.el.object3D.position.set(0, 0, -0.2);
           this.el.object3D.rotation.set(0, 0, 0);
-
-          this.el.emit("grab-start");
         }
       },
       'grab-end': function () {
@@ -220,7 +215,6 @@
         this.isGrabbed = false;
 
         this.el.sceneEl.object3D.attach(this.el.object3D);
-        this.grabber = null;
       }
     }
   });
@@ -283,25 +277,29 @@
       <a-entity id="rig" position="0 0 0" snap-turn gorilla-physics>
         <a-camera id="head" look-controls camera="near:0.05" position="0 1.6 0"></a-camera>
 
-        <!-- Controllers -->
+        <!-- LEFT CONTROLLER + HAND -->
         <a-entity id="lc"
                   oculus-touch-controls="hand: left"
-                  vr-grab="hand:#leftHand"></a-entity>
+                  vr-grab="hand:#leftHand">
 
+          <a-entity id="leftHand">
+            <a-box width="0.1" height="0.1" depth="0.1" color="red"></a-box>
+          </a-entity>
+
+        </a-entity>
+
+        <!-- RIGHT CONTROLLER + HAND -->
         <a-entity id="rc"
                   oculus-touch-controls="hand: right"
-                  vr-grab="hand:#rightHand"></a-entity>
+                  vr-grab="hand:#rightHand">
 
-        <!-- Hands -->
-        <a-entity id="leftHand" hand-follow="target:#lc">
-          <a-box width="0.1" height="0.1" depth="0.1" color="red"></a-box>
+          <a-entity id="rightHand">
+            <a-box width="0.1" height="0.1" depth="0.1" color="red"></a-box>
+          </a-entity>
+
         </a-entity>
 
-        <a-entity id="rightHand" hand-follow="target:#rc">
-          <a-box width="0.1" height="0.1" depth="0.1" color="red"></a-box>
-        </a-entity>
-
-        <!-- Body -->
+        <!-- BODY -->
         <a-sphere position="0 0.8 0" radius="0.4" color="#444"></a-sphere>
       </a-entity>
     </a-entity>
@@ -310,7 +308,7 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- "PICKAXE" AS BIG YELLOW BOX -->
+    <!-- PICKAXE (YELLOW BOX FOR TESTING) -->
     <a-entity id="pickaxe"
               position="0 1 -1.5"
               pickup>
