@@ -1,138 +1,136 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>Pixel Company – Gorilla Prototype Fixed</title>
-<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-<script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
+    <meta charset="utf-8">
+    <title>Pixel Company – Gorilla Prototype Final</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
-<script>
-/* =========================================================
-   SNAP TURN (Simplified & Stable)
-========================================================= */
-AFRAME.registerComponent('snap-turn', {
-  init() {
-    this.cooldown = false;
-  },
-  tick() {
-    const gp = navigator.getGamepads()[1]; // Right controller
-    if (!gp || this.cooldown) return;
+    <script>
+        /* =========================================================
+           GORILLA PHYSICS (Stable + True Gravity)
+        ========================================================= */
+        AFRAME.registerComponent('gorilla-physics', {
+            schema: {
+                strength: { default: 2.1 },
+                gravity: { default: -25 },
+                maxSpeed: { default: 15 }
+            },
+            init() {
+                this.vel = new THREE.Vector3();
+                this.handPrevL = new THREE.Vector3();
+                this.handPrevR = new THREE.Vector3();
+                this.handCurr = new THREE.Vector3();
+                this.tempVec = new THREE.Vector3();
+                this.ready = false;
+            },
+            tick(_, dtMs) {
+                if (!dtMs) return;
 
-    const xAxis = gp.axes[2] || gp.axes[0]; 
-    if (Math.abs(xAxis) > 0.8) {
-      this.el.object3D.rotation.y -= Math.sign(xAxis) * THREE.MathUtils.degToRad(30);
-      this.cooldown = true;
-      setTimeout(() => this.cooldown = false, 250);
-    }
-  }
-});
+                // 1. LAG PROTECTION: Cap delta time so spikes don't launch you
+                const dt = Math.min(dtMs / 1000, 0.033); 
+                const rig = this.el.object3D;
 
-/* =========================================================
-   GORILLA PHYSICS (Centralized to Rig)
-========================================================= */
-AFRAME.registerComponent('gorilla-physics', {
-  schema: {
-    strength: { default: 2.0 },
-    gravity: { default: -20 },
-    maxSpeed: { default: 15 }
-  },
-  init() {
-    this.vel = new THREE.Vector3();
-    this.ray = new THREE.Raycaster();
-    this.down = new THREE.Vector3(0, -1, 0);
-    this.hands = [];
-    this.surfaces = [];
-    
-    this.el.sceneEl.addEventListener('loaded', () => {
-      this.surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')].map(e => e.object3D);
-      this.hands = [
-        { el: document.querySelector('#leftHand'), prev: new THREE.Vector3(), curr: new THREE.Vector3() },
-        { el: document.querySelector('#rightHand'), prev: new THREE.Vector3(), curr: new THREE.Vector3() }
-      ];
-    });
-  },
-  tick(_, dtMs) {
-    if (!dtMs || !this.hands[0]?.el) return;
-    const dt = dtMs / 1000;
-    const rig = this.el.object3D;
+                const handL = document.querySelector('#lc')?.object3D;
+                const handR = document.querySelector('#rc')?.object3D;
+                if (!handL || !handR) return;
 
-    // 1. Calculate Hand Velocities & Check Collisions
-    this.hands.forEach(h => {
-      h.el.object3D.getWorldPosition(h.curr);
-      const hVel = h.curr.clone().sub(h.prev).divideScalar(dt);
-      
-      this.ray.set(h.curr, this.down);
-      const hits = this.ray.intersectObjects(this.surfaces, true);
+                const processHand = (hand, prevPos) => {
+                    hand.getWorldPosition(this.handCurr);
+                    if (this.ready) {
+                        this.tempVec.copy(this.handCurr).sub(prevPos).divideScalar(dt);
 
-      // Only push if hand is near a surface and moving down
-      if (hits.length && hits[0].distance < 0.2 && hVel.y < -0.2) {
-        this.vel.x = -hVel.x * this.data.strength;
-        this.vel.z = -hVel.z * this.data.strength;
-        this.vel.y = -hVel.y * (this.data.strength * 1.5);
-        
-        // Safety Speed Cap
-        this.vel.y = Math.min(this.vel.y, this.data.maxSpeed);
-      }
-      h.prev.copy(h.curr);
-    });
+                        // Only push if hand is near ground and movement isn't a tracking glitch
+                        if (this.tempVec.length() < 30) { 
+                            // Check Y relative to world (0.15m from floor)
+                            if (this.handCurr.y < 0.15 && this.tempVec.y < -0.1) {
+                                this.vel.x = -this.tempVec.x * this.data.strength;
+                                this.vel.z = -this.tempVec.z * this.data.speed; // corrected mapping
+                                this.vel.y = -this.tempVec.y * (this.data.strength * 1.5);
+                            }
+                        }
+                    }
+                    prevPos.copy(this.handCurr);
+                };
 
-    // 2. Apply Gravity & Movement
-    this.vel.y += this.data.gravity * dt;
-    rig.position.addScaledVector(this.vel, dt);
+                processHand(handL, this.handPrevL);
+                processHand(handR, this.handPrevR);
+                this.ready = true;
 
-    // 3. Hard Grounding (Anti-Bounce / Anti-Float)
-    if (rig.position.y <= 0) {
-      rig.position.y = 0;
-      if (this.vel.y < 0) this.vel.y = 0;
-      this.vel.multiplyScalar(0.85); // Ground Friction
-    } else {
-      this.vel.multiplyScalar(0.98); // Air Resistance
-    }
-  }
-});
+                // 2. APPLY GRAVITY & VELOCITY
+                this.vel.y += this.data.gravity * dt;
+                this.vel.clampLength(0, this.data.maxSpeed); // Yeet protection
+                rig.position.addScaledVector(this.vel, dt);
 
-/* =========================================================
-   HAND FOLLOW (Cleaned Up)
-========================================================= */
-AFRAME.registerComponent('hand-follow', {
-  schema: { target: { type: 'selector' } },
-  tick() {
-    if (!this.data.target) return;
-    this.el.object3D.position.copy(this.data.target.object3D.position);
-    this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
-  }
-});
-</script>
+                // 3. TRUE FLOOR COLLISION (Y=0)
+                if (rig.position.y <= 0) {
+                    rig.position.y = 0;
+                    if (this.vel.y < 0) this.vel.y = 0;
+                    this.vel.x *= 0.85; // Ground friction
+                    this.vel.z *= 0.85;
+                }
+            }
+        });
+
+        /* =========================================================
+           SNAP TURN (Right Stick)
+        ========================================================= */
+        AFRAME.registerComponent('snap-turn', {
+            init() { this.cooldown = false; },
+            tick() {
+                const gp = navigator.getGamepads()[1]; // Right controller
+                if (!gp || this.cooldown) return;
+                const xAxis = gp.axes[2] || gp.axes[0];
+                if (Math.abs(xAxis) > 0.8) {
+                    this.el.object3D.rotation.y -= Math.sign(xAxis) * THREE.MathUtils.degToRad(30);
+                    this.cooldown = true;
+                    setTimeout(() => this.cooldown = false, 250);
+                }
+            }
+        });
+    </script>
 </head>
 
 <body>
-<a-scene background="color: #87CEEB" renderer="antialias: true">
-  
-  <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
-  <a-entity light="type: directional; intensity: 0.5" position="1 2 1"></a-entity>
+    <a-scene networked-scene="room: pixel-company; debug: false" background="color: #87CEEB">
+        
+        <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
+        <a-entity light="type: directional; intensity: 0.5" position="1 2 1"></a-entity>
 
-  <a-entity id="rig" gorilla-physics snap-turn position="0 0 0">
-    <a-entity camera look-controls="pointerLockEnabled: true" position="0 1.6 0" camera="near: 0.05"></a-entity>
+        <a-entity id="rig" position="0 3 0" gorilla-physics snap-turn>
+            
+            <a-camera look-controls camera="near: 0.05"></a-camera>
 
-    <a-entity position="0 0.8 0">
-      <a-sphere radius="0.35" color="white" scale="1 1.2 0.8"></a-sphere>
-    </a-entity>
+            <a-entity id="body">
+                <a-sphere radius="0.4" color="white" position="0 0.4 0"></a-sphere>
+                <a-box width="0.5" height="0.6" depth="0.3" color="white" position="0 0.3 0"></a-box>
+            </a-entity>
 
-    <a-entity id="lc" tracked-controls="hand:left"></a-entity>
-    <a-entity id="rc" tracked-controls="hand:right"></a-entity>
+            <a-entity id="lc" tracked-controls="hand:left"></a-entity>
+            <a-entity id="rc" tracked-controls="hand:right"></a-entity>
 
-    <a-entity id="leftHand" hand-follow="target:#lc">
-      <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
-    </a-entity>
+            <a-entity id="leftHandVisual" position="0 0 0">
+                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
+            </a-entity>
+            <a-entity id="rightHandVisual" position="0 0 0">
+                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
+            </a-entity>
+        </a-entity>
 
-    <a-entity id="rightHand" hand-follow="target:#rc">
-      <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
-    </a-entity>
-  </a-entity>
+        <a-plane rotation="-90 0 0" width="100" height="100" color="#3A5F0B" class="climbable"></a-plane>
+        
+    </a-scene>
 
-  <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
-  <a-box class="climbable" position="2 0.5 -3" color="#777"></a-box>
-
-</a-scene>
+    <script>
+        // Simple helper to keep hand visuals on tracked controls
+        const updateHands = () => {
+            const lc = document.querySelector('#lc').object3D;
+            const rc = document.querySelector('#rc').object3D;
+            document.querySelector('#leftHandVisual').object3D.position.copy(lc.position);
+            document.querySelector('#rightHandVisual').object3D.position.copy(rc.position);
+            requestAnimationFrame(updateHands);
+        };
+        updateHands();
+    </script>
 </body>
 </html>
