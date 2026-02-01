@@ -125,7 +125,7 @@
   });
 
   /* =========================================================
-     HAND FOLLOW
+     HAND FOLLOW (for Gorilla Tag–style hands)
   ========================================================= */
   AFRAME.registerComponent('hand-follow',{
     schema:{target:{type:'selector'}},
@@ -207,7 +207,7 @@
         hand.object3D.getWorldPosition(handPos);
         this.el.object3D.getWorldPosition(itemPos);
 
-        if (handPos.distanceTo(itemPos) < 0.25) {
+        if (handPos.distanceTo(itemPos) < 0.35) {
           hand.appendChild(this.el);
           this.el.object3D.position.set(0, 0, 0);
           this.el.object3D.rotation.set(0, 0, 0);
@@ -290,19 +290,28 @@
       <a-entity id="rig" position="0 3 0" snap-turn="angle:45" gorilla-physics>
         <a-camera look-controls camera="near:0.05"></a-camera>
 
+        <!-- Raw controller tracking -->
         <a-entity id="lc" tracked-controls="hand:left"></a-entity>
         <a-entity id="rc" tracked-controls="hand:right"></a-entity>
 
+        <!-- Gorilla Tag–style hands (boxy, but follow controllers) -->
         <a-entity id="leftHand" hand-follow="target:#lc">
-          <a-sphere radius="0.12" visible="false"
-                    vr-grab="hand: #leftHand"></a-sphere>
+          <a-box width="0.18" height="0.06" depth="0.28"
+                 color="#cccccc"></a-box>
         </a-entity>
 
         <a-entity id="rightHand" hand-follow="target:#rc">
-          <a-sphere radius="0.12" visible="false"
-                    vr-grab="hand: #rightHand"></a-sphere>
+          <a-box width="0.18" height="0.06" depth="0.28"
+                 color="#cccccc"></a-box>
         </a-entity>
 
+        <!-- Grab logic lives on the controller entities -->
+        <a-entity id="lcGrab" tracked-controls="hand:left"
+                  vr-grab="hand: #leftHand"></a-entity>
+        <a-entity id="rcGrab" tracked-controls="hand:right"
+                  vr-grab="hand: #rightHand"></a-entity>
+
+        <!-- Body -->
         <a-sphere position="0 0.5 0" radius="0.4" color="#444"></a-sphere>
       </a-entity>
     </a-entity>
@@ -311,12 +320,12 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- Pickaxe on the floor -->
+    <!-- Pickaxe on the floor (scaled down) -->
     <a-entity id="pickaxe"
               gltf-model="url(pickaxe.glb)"
               position="0 0 -2"
               rotation="0 45 0"
-              scale="1 1 1"
+              scale="0.08 0.08 0.08"
               pickup></a-entity>
 
   </a-scene>
