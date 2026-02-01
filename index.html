@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Pixel Company – Full Game</title>
+  <title>Pixel Company – Full Game (No Pickaxe)</title>
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
@@ -190,6 +190,7 @@
   AFRAME.registerComponent("pickup", {
     init: function () {
       this.isGrabbed = false;
+      this.el.classList.add("grabbable");
     },
     events: {
       'grab-attempt': function (evt) {
@@ -204,10 +205,14 @@
 
         if (handPos.distanceTo(itemPos) < 0.6) {
           this.isGrabbed = true;
+          this.grabber = handEl;
+
           handEl.object3D.attach(this.el.object3D);
 
           this.el.object3D.position.set(0, 0, -0.2);
           this.el.object3D.rotation.set(0, 0, 0);
+
+          this.el.emit("grab-start");
         }
       },
       'grab-end': function () {
@@ -215,6 +220,7 @@
         this.isGrabbed = false;
 
         this.el.sceneEl.object3D.attach(this.el.object3D);
+        this.grabber = null;
       }
     }
   });
@@ -308,12 +314,7 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- PICKAXE (YELLOW BOX FOR TESTING) -->
-    <a-entity id="pickaxe"
-              position="0 1 -1.5"
-              pickup>
-      <a-box color="yellow" depth="0.4" height="0.4" width="0.4"></a-box>
-    </a-entity>
+    <!-- PICKAXE REMOVED -->
 
   </a-scene>
 </body>
