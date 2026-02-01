@@ -7,9 +7,7 @@
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
-  <!-- ===========================
-       SYNCED MUSIC
-  ============================ -->
+  <!-- SYNCED MUSIC -->
   <script>
   AFRAME.registerComponent("synced-music", {
     init: function () {
@@ -60,9 +58,7 @@
   });
   </script>
 
-  <!-- ===========================
-       DAY / NIGHT CYCLE
-  ============================ -->
+  <!-- DAY / NIGHT CYCLE -->
   <script>
   AFRAME.registerComponent("day-night-cycle", {
     schema: { duration: { default: 600000 } },
@@ -91,9 +87,7 @@
   });
   </script>
 
-  <!-- ===========================
-       SNAP TURN
-  ============================ -->
+  <!-- SNAP TURN -->
   <script>
   AFRAME.registerComponent('snap-turn', {
     schema: { angle:{default:45}, deadzone:{default:0.7}, cooldown:{default:250} },
@@ -122,9 +116,7 @@
   });
   </script>
 
-  <!-- ===========================
-       HAND FOLLOW
-  ============================ -->
+  <!-- HAND FOLLOW -->
   <script>
   AFRAME.registerComponent('hand-follow',{
     schema:{target:{type:'selector'}},
@@ -136,9 +128,7 @@
   });
   </script>
 
-  <!-- ===========================
-       GORILLA PHYSICS
-  ============================ -->
+  <!-- GORILLA PHYSICS -->
   <script>
   AFRAME.registerComponent('gorilla-physics',{
     schema:{strength:{default:2.0}, gravity:{default:-20}},
@@ -195,9 +185,7 @@
   });
   </script>
 
-  <!-- ===========================
-       PICKUP SYSTEM (YOUR VERSION)
-  ============================ -->
+  <!-- PICKUP (IMPROVED) -->
   <script>
   AFRAME.registerComponent("pickup", {
     init: function () {
@@ -238,9 +226,7 @@
   });
   </script>
 
-  <!-- ===========================
-       VR GRAB (YOUR VERSION)
-  ============================ -->
+  <!-- VR GRAB (ROBUST) -->
   <script>
   AFRAME.registerComponent("vr-grab", {
     schema: { hand: { type: "selector" } },
@@ -269,38 +255,28 @@
   <a-scene background="color:#111"
            networked-scene="app:gorilla; room:room1; adapter:webrtc; debug:true">
 
-    <!-- ===========================
-         ASSETS
-    ============================ -->
+    <!-- ASSETS -->
     <a-assets>
       <a-asset-item id="pickaxeModel" src="pickaxe.glb"></a-asset-item>
     </a-assets>
 
-    <!-- ===========================
-         MUSIC
-    ============================ -->
+    <!-- MUSIC -->
     <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true" synced-music></a-entity>
 
-    <!-- ===========================
-         SKY + LIGHTING
-    ============================ -->
+    <!-- SKY + LIGHTING -->
     <a-sky id="sky" color="#0a0a33" radius="500"></a-sky>
     <a-entity id="sun" light="type:directional; intensity:1" position="0 100 0"></a-entity>
     <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
     <a-entity day-night-cycle></a-entity>
 
-    <!-- ===========================
-         MULTIPLAYER AVATAR TEMPLATE
-    ============================ -->
+    <!-- MULTIPLAYER AVATAR TEMPLATE -->
     <a-template id="avatar-template">
       <a-entity>
         <a-sphere color="#39f" radius="0.3"></a-sphere>
       </a-entity>
     </a-template>
 
-    <!-- ===========================
-         PLAYER
-    ============================ -->
+    <!-- PLAYER -->
     <a-entity id="player"
               networked="template:#avatar-template; attachTemplateToLocal:false">
 
@@ -330,48 +306,24 @@
       </a-entity>
     </a-entity>
 
-    <!-- ===========================
-         WORLD
-    ============================ -->
+    <!-- WORLD -->
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- ===========================
-         PICKAXE (GLB)
-    ============================ -->
+    <!-- PICKAXE WITH DEBUG BOX + GLB WRAPPED -->
     <a-entity id="pickaxe"
               position="0 1 -1"
               scale="0.1 0.1 0.1"
               pickup>
 
-      <a-entity gltf-model="#pickaxeModel"></a-entity>
+      <!-- Debug grab point -->
+      <a-box id="debugBox" color="yellow" opacity="0.4" depth="0.2" height="0.2" width="0.2"></a-box>
+
+      <!-- GLB as child -->
+      <a-entity id="pickaxeMesh" gltf-model="#pickaxeModel"></a-entity>
 
     </a-entity>
 
   </a-scene>
-
-  <!-- ===========================
-       HAND FOLLOW LOOP
-  ============================ -->
-  <script>
-    const lc = document.querySelector('#lc');
-    const rc = document.querySelector('#rc');
-    const lh = document.querySelector('#leftHand');
-    const rh = document.querySelector('#rightHand');
-
-    function updateHands() {
-      if (lc.object3D) {
-        lh.object3D.position.copy(lc.object3D.position);
-        lh.object3D.quaternion.copy(lc.object3D.quaternion);
-      }
-      if (rc.object3D) {
-        rh.object3D.position.copy(rc.object3D.position);
-        rh.object3D.quaternion.copy(rc.object3D.quaternion);
-      }
-      requestAnimationFrame(updateHands);
-    }
-    updateHands();
-  </script>
-
 </body>
 </html>
