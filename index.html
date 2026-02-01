@@ -4,13 +4,10 @@
   <meta charset="utf-8">
   <title>Pixel Company – Full VR Game</title>
 
-  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-
-  <!-- Networked-Aframe -->
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
-  <!-- ===== GLOBAL SYNCED MUSIC ===== -->
+  <!-- Synced Music -->
   <script>
   AFRAME.registerComponent("synced-music", {
     init: function () {
@@ -61,7 +58,7 @@
   });
   </script>
 
-  <!-- ===== DAY/NIGHT CYCLE ===== -->
+  <!-- Day/Night -->
   <script>
   AFRAME.registerComponent("day-night-cycle", {
     schema: { duration: { default: 600000 } },
@@ -90,7 +87,7 @@
   });
   </script>
 
-  <!-- ===== SNAP TURN ===== -->
+  <!-- Snap Turn -->
   <script>
   AFRAME.registerComponent('snap-turn', {
     schema: { angle:{default:45}, deadzone:{default:0.7}, cooldown:{default:250} },
@@ -119,7 +116,7 @@
   });
   </script>
 
-  <!-- ===== HAND FOLLOW ===== -->
+  <!-- Hand Follow -->
   <script>
   AFRAME.registerComponent('hand-follow',{
     schema:{target:{type:'selector'}},
@@ -131,7 +128,7 @@
   });
   </script>
 
-  <!-- ===== GORILLA PHYSICS ===== -->
+  <!-- Gorilla Physics -->
   <script>
   AFRAME.registerComponent('gorilla-physics',{
     schema:{strength:{default:2.0}, gravity:{default:-20}},
@@ -188,96 +185,81 @@
   });
   </script>
 
-  <!-- ===== PICKUP SYSTEM ===== -->
+  <!-- Pickup -->
   <script>
   AFRAME.registerComponent("pickup", {
     init: function () {
-      this.el.addEventListener("grab-attempt", (e) => {
-        const hand = e.detail.hand;
+      this.isGrabbed = false;
 
+      this.el.addEventListener("grab-attempt", (e) => {
+        if (this.isGrabbed) return;
+
+        const hand = e.detail.hand;
         const handPos = new THREE.Vector3();
         const itemPos = new THREE.Vector3();
 
         hand.object3D.getWorldPosition(handPos);
         this.el.object3D.getWorldPosition(itemPos);
 
-        if (handPos.distanceTo(itemPos) < 0.35) {
+        if (handPos.distanceTo(itemPos) < 0.5) {
+          this.isGrabbed = true;
           hand.appendChild(this.el);
           this.el.emit("grab-start", {hand: hand});
         }
       });
 
       this.el.addEventListener("grab-end", (e) => {
-        const hand = e.detail.hand;
-        if (hand.contains(this.el)) {
-          hand.removeChild(this.el);
-        }
+        if (!this.isGrabbed) return;
+        this.isGrabbed = false;
+
+        const scene = document.querySelector('a-scene');
+        const worldPos = new THREE.Vector3();
+        const worldQuat = new THREE.Quaternion();
+
+        this.el.object3D.getWorldPosition(worldPos);
+        this.el.object3D.getWorldQuaternion(worldQuat);
+
+        scene.appendChild(this.el);
+        this.el.object3D.position.copy(worldPos);
+        this.el.object3D.quaternion.copy(worldQuat);
       });
     }
   });
   </script>
 
-  <!-- ===== VR GRAB (on controllers, using Oculus Touch) ===== -->
+  <!-- VR Grab -->
   <script>
   AFRAME.registerComponent("vr-grab", {
     schema: { hand: { type: "selector" } },
 
     init: function () {
-      this.grabbing = false;
-      this.gamepad = null;
-
-      this.el.addEventListener("controllerconnected", (evt) => {
-        this.gamepad = evt.detail.component.data.gamepad;
-      });
+      this.el.addEventListener('triggerdown', () => this.onGrab());
+      this.el.addEventListener('gripdown', () => this.onGrab());
+      this.el.addEventListener('triggerup', () => this.onRelease());
+      this.el.addEventListener('gripup', () => this.onRelease());
     },
 
-    tick: function () {
-      if (!this.gamepad) return;
+    onGrab: function() {
+      this.data.hand.emit("grab-attempt", { hand: this.data.hand });
+    },
 
-      const triggerPressed = this.gamepad.buttons[0]?.pressed;
-      const bPressed = this.gamepad.buttons[1]?.pressed;
-      const yPressed = this.gamepad.buttons[3]?.pressed;
-
-      if (triggerPressed && !this.grabbing) {
-        this.grabbing = true;
-        this.data.hand.emit("grab-attempt", { hand: this.data.hand });
-      }
-
-      if (!triggerPressed && this.grabbing) {
-        this.grabbing = false;
-        this.data.hand.emit("grab-end", { hand: this.data.hand });
-      }
-
-      if (bPressed || yPressed) {
-        this.data.hand.emit("grab-end", { hand: this.data.hand });
-      }
+    onRelease: function() {
+      this.data.hand.emit("grab-end", { hand: this.data.hand });
     }
   });
   </script>
 
-  <!-- ===== SNAP-TO-HAND ===== -->
+  <!-- Snap-to-hand -->
   <script>
   AFRAME.registerComponent("snap-to-hand", {
     schema: {
       pos: {type: "vec3", default: {x:0, y:0, z:0}},
       rot: {type: "vec3", default: {x:0, y:0, z:0}}
     },
-
     init: function () {
-      this.el.addEventListener("grab-start", (e) => {
-        const hand = e.detail.hand;
-
-        this.el.object3D.position.set(
-          this.data.pos.x,
-          this.data.pos.y,
-          this.data.pos.z
-        );
-
-        this.el.object3D.rotation.set(
-          THREE.MathUtils.degToRad(this.data.rot.x),
-          THREE.MathUtils.degToRad(this.data.rot.y),
-          THREE.MathUtils.degToRad(this.data.rot.z)
-        );
+      this.el.addEventListener("grab-start", () => {
+        this.el.setAttribute('position', this.data.pos);
+        this.el.setAttribute('rotation', this.data.rot);
       });
     }
   });
@@ -289,34 +271,29 @@
   <a-scene background="color:#111"
            networked-scene="app:gorilla; room:room1; adapter:webrtc; debug:true">
 
-    <!-- MUSIC -->
-    <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true"
-              synced-music></a-entity>
+    <a-assets>
+      <a-asset-item id="pickaxeModel" src="pickaxe.glb"></a-asset-item>
+    </a-assets>
 
-    <!-- SKY + LIGHTING -->
+    <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true" synced-music></a-entity>
+
     <a-sky id="sky" color="#0a0a33" radius="500"></a-sky>
-
-    <a-entity id="sun" light="type:directional; intensity:1"
-              position="0 100 0"></a-entity>
-
+    <a-entity id="sun" light="type:directional; intensity:1" position="0 100 0"></a-entity>
     <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
     <a-entity day-night-cycle></a-entity>
 
-    <!-- MULTIPLAYER AVATAR TEMPLATE -->
     <a-template id="avatar-template">
       <a-entity>
         <a-sphere color="#39f" radius="0.3"></a-sphere>
       </a-entity>
     </a-template>
 
-    <!-- PLAYER (NETWORKED) -->
     <a-entity id="player"
               networked="template:#avatar-template; attachTemplateToLocal:false">
 
-      <a-entity id="rig" position="0 1.6 0" snap-turn gorilla-physics>
-        <a-camera look-controls camera="near:0.05"></a-camera>
+      <a-entity id="rig" position="0 0 0" snap-turn gorilla-physics>
+        <a-camera id="head" look-controls camera="near:0.05" position="0 1.6 0"></a-camera>
 
-        <!-- CONTROLLERS WITH VR-GRAB (OCULUS TOUCH) -->
         <a-entity id="lc"
                   oculus-touch-controls="hand: left"
                   vr-grab="hand:#leftHand"></a-entity>
@@ -325,32 +302,28 @@
                   oculus-touch-controls="hand: right"
                   vr-grab="hand:#rightHand"></a-entity>
 
-        <!-- GORILLA HANDS -->
         <a-entity id="leftHand" hand-follow="target:#lc">
-          <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
+          <a-box width="0.1" height="0.1" depth="0.1" color="#ccc" opacity="0.5"></a-box>
         </a-entity>
 
         <a-entity id="rightHand" hand-follow="target:#rc">
-          <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
+          <a-box width="0.1" height="0.1" depth="0.1" color="#ccc" opacity="0.5"></a-box>
         </a-entity>
 
-        <!-- BODY -->
-        <a-sphere position="0 0.5 0" radius="0.4" color="#444"></a-sphere>
+        <a-sphere position="0 0.8 0" radius="0.4" color="#444"></a-sphere>
       </a-entity>
     </a-entity>
 
-    <!-- WORLD -->
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- PICKAXE (IN FRONT OF PLAYER) -->
     <a-entity id="pickaxe"
-              gltf-model="url(pickaxe.glb)"
-              position="0 1.4 -0.6"
+              gltf-model="#pickaxeModel"
+              position="0 1 -1"
               rotation="0 45 0"
               scale="0.08 0.08 0.08"
               pickup
-              snap-to-hand="pos: 0.05 -0.05 -0.15; rot: 0 90 -90">
+              snap-to-hand="pos: 0 0 -0.1; rot: 0 90 -90">
     </a-entity>
 
   </a-scene>
