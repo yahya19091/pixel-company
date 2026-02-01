@@ -11,5 +11,12 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "screenshots": [
+    {
+      "src": "splash.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
