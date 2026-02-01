@@ -2,106 +2,119 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pixel Company – Prototype Fixed</title>
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <title>Pixel Company – Gorilla Prototype</title>
 
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
+
+    <!-- =========================================================
+         CAMERA OFFSET (Fixes floating camera)
+    ========================================================= -->
     <script>
-    /* =========================================================
-       SNAP TURN (Refined XR Session Logic)
-    ========================================================= */
-    AFRAME.registerComponent('snap-turn', {
-      schema: {
-        angle: { default: 45 },
-        deadzone: { default: 0.7 },
-        cooldown: { default: 250 }
-      },
-      init: function () { this.canSnap = true; },
+    AFRAME.registerComponent('camera-offset', {
+      schema: { height: { default: 1.6 } },
       tick: function () {
+        this.el.object3D.position.y = this.data.height;
+      }
+    });
+    </script>
+
+    <!-- =========================================================
+         SNAP TURN (Right-hand joystick)
+    ========================================================= -->
+    <script>
+    AFRAME.registerComponent('snap-turn', {
+      schema: { angle: { default: 45 }, deadzone: { default: 0.7 }, cooldown: { default: 250 } },
+      init() { this.canSnap = true; },
+      tick() {
         const session = this.el.sceneEl.renderer.xr.getSession();
         if (!session || !this.canSnap) return;
 
         for (const source of session.inputSources) {
           if (source.handedness !== 'right' || !source.gamepad) continue;
-          const axes = source.gamepad.axes;
-          const x = axes[2] || axes[0]; 
 
+          const x = source.gamepad.axes[2] || source.gamepad.axes[0];
           if (Math.abs(x) > this.data.deadzone) {
             const direction = x > 0 ? -1 : 1;
-            const rad = (this.data.angle * direction) * (Math.PI / 180);
+            const rad = THREE.MathUtils.degToRad(this.data.angle * direction);
+
             this.el.object3D.rotation.y += rad;
 
-            if (source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
-              source.gamepad.hapticActuators[0].pulse(0.3, 100);
-            }
+            // Haptics
+            source.gamepad.hapticActuators?.[0]?.pulse(0.3, 100);
+
+            // Audio
+            document.querySelector('#audio-snap')?.components.sound.playSound();
 
             this.canSnap = false;
-            setTimeout(() => { this.canSnap = true; }, this.data.cooldown);
-            break; 
+            setTimeout(() => this.canSnap = true, this.data.cooldown);
           }
         }
       }
     });
+    </script>
 
-    /* =========================================================
-       HAND FOLLOW
-    ========================================================= */
+    <!-- =========================================================
+         HAND FOLLOW (Local controller → visual hand)
+    ========================================================= -->
+    <script>
     AFRAME.registerComponent('hand-follow', {
       schema: { target: { type: 'selector' } },
-      tick: function () {
+      tick() {
         if (!this.data.target) return;
         this.el.object3D.position.copy(this.data.target.object3D.position);
         this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
       }
     });
+    </script>
 
-    /* =========================================================
-       GORILLA PHYSICS (Direction-Aware Fix)
-    ========================================================= */
+    <!-- =========================================================
+         GORILLA PHYSICS (Push-off movement)
+    ========================================================= -->
+    <script>
     AFRAME.registerComponent('gorilla-physics', {
-      schema: {
-        strength: { default: 2.0 },
-        gravity: { default: -20 }
-      },
-      init: function () {
+      schema: { strength: { default: 2.0 }, gravity: { default: -20 } },
+
+      init() {
         this.vel = new THREE.Vector3();
         this.prevL = new THREE.Vector3();
         this.prevR = new THREE.Vector3();
         this.worldPos = new THREE.Vector3();
         this.ray = new THREE.Raycaster();
       },
-      tick: function (_, dtMs) {
+
+      tick(_, dtMs) {
         if (!dtMs) return;
         const dt = Math.min(dtMs / 1000, 0.033);
         const rig = this.el.object3D;
-        const surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')].map(e => e.object3D);
 
-        const processHand = (id, prevPos, gpIdx) => {
+        const surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')]
+          .map(e => e.object3D);
+
+        const processHand = (id, prevPos, gpIndex) => {
           const hand = document.querySelector(id);
           if (!hand) return;
 
-          const currPos = hand.object3D.position;
-          // 1. Calculate velocity in LOCAL space (relative to rig)
-          const handVelLocal = currPos.clone().sub(prevPos).divideScalar(dt);
-          
+          const curr = hand.object3D.position.clone();
+          const localVel = curr.clone().sub(prevPos).divideScalar(dt);
+
           hand.object3D.getWorldPosition(this.worldPos);
           this.ray.set(this.worldPos, new THREE.Vector3(0, -1, 0));
+
           const hits = this.ray.intersectObjects(surfaces, true);
 
-          if (hits.length && hits[0].distance < 0.18 && handVelLocal.y < -0.2) {
-            
-            // 2. CONVERT LOCAL VELOCITY TO WORLD VELOCITY
-            // This rotates the force based on the Rig's current Y-rotation
-            const worldVel = handVelLocal.clone().applyQuaternion(rig.quaternion);
+          if (hits.length && hits[0].distance < 0.18 && localVel.y < -0.2) {
+            const worldVel = localVel.clone().applyQuaternion(rig.quaternion);
 
-            // 3. Apply the rotated force
             this.vel.x = -worldVel.x * this.data.strength;
             this.vel.z = -worldVel.z * this.data.strength;
             this.vel.y = -worldVel.y * (this.data.strength * 1.5);
 
-            const gp = navigator.getGamepads()[gpIdx];
-            if (gp?.hapticActuators?.[0]) gp.hapticActuators[0].pulse(0.6, 50);
+            navigator.getGamepads()[gpIndex]?.hapticActuators?.[0]?.pulse(0.6, 50);
+            document.querySelector('#audio-impact')?.components.sound.playSound();
           }
-          prevPos.copy(currPos);
+
+          prevPos.copy(curr);
         };
 
         processHand('#leftHand', this.prevL, 0);
@@ -112,7 +125,7 @@
 
         if (rig.position.y <= 0) {
           rig.position.y = 0;
-          if (this.vel.y < 0) this.vel.y = 0;
+          this.vel.y = 0;
           this.vel.x *= 0.75;
           this.vel.z *= 0.75;
         }
@@ -122,27 +135,77 @@
 </head>
 
 <body>
-    <a-scene background="color: #111">
-        <a-entity id="rig" position="0 3 0" snap-turn="angle: 45" gorilla-physics>
-            <a-camera look-controls camera="near: 0.05"></a-camera>
-            <a-entity id="lc" tracked-controls="hand:left"></a-entity>
-            <a-entity id="rc" tracked-controls="hand:right"></a-entity>
+    <a-scene background="color: #111"
+             networked-scene="app: gorilla; room: room1; adapter: webrtc; debug: true">
 
-            <a-entity id="leftHand" hand-follow="target:#lc">
-                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
-            </a-entity>
-            <a-entity id="rightHand" hand-follow="target:#rc">
-                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
-            </a-entity>
+        <!-- AUDIO -->
+        <a-assets>
+            <audio id="hit-sound" src="hit.wav"></audio>
+            <audio id="snap-sound" src="snap.wav"></audio>
+            <audio id="ambience-sound" src="ambience.mp3"></audio>
 
-            <a-sphere position="0 0.5 0" radius="0.4" color="#444"></a-sphere>
+            <template id="avatar-template">
+                <a-entity class="avatar">
+                    <a-sphere class="head" color="#444" radius="0.4"></a-sphere>
+                    <a-entity class="left-hand-sync"><a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box></a-entity>
+                    <a-entity class="right-hand-sync"><a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box></a-entity>
+                </a-entity>
+            </template>
+
+            <script>
+            NAF.schemas.add({
+              template: '#avatar-template',
+              components: [
+                'position', 'rotation',
+                { selector: '.left-hand-sync', component: 'position' },
+                { selector: '.left-hand-sync', component: 'rotation' },
+                { selector: '.right-hand-sync', component: 'position' },
+                { selector: '.right-hand-sync', component: 'rotation' }
+              ]
+            });
+            </script>
+        </a-assets>
+
+        <a-entity id="audio-impact" sound="src: #hit-sound; poolSize: 4; volume: 0.7"></a-entity>
+        <a-entity id="audio-snap" sound="src: #snap-sound; poolSize: 2; volume: 0.4"></a-entity>
+        <a-entity sound="src: #ambience-sound; autoplay: true; loop: true; volume: 0.3"></a-entity>
+
+        <!-- PLAYER -->
+        <a-entity id="player" networked="template:#avatar-template; attachTemplateToLocal:false">
+
+          <a-entity id="rig" position="0 3 0" snap-turn gorilla-physics>
+
+              <!-- FIXED CAMERA HEIGHT -->
+              <a-entity id="head" camera-offset="height:1.6">
+                <a-camera look-controls camera="near: 0.05"></a-camera>
+              </a-entity>
+
+              <!-- CONTROLLERS -->
+              <a-entity id="lc" tracked-controls="hand:left"></a-entity>
+              <a-entity id="rc" tracked-controls="hand:right"></a-entity>
+
+              <!-- HANDS -->
+              <a-entity id="leftHand" class="left-hand-sync" hand-follow="target:#lc">
+                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
+              </a-entity>
+
+              <a-entity id="rightHand" class="right-hand-sync" hand-follow="target:#rc">
+                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
+              </a-entity>
+
+              <!-- BODY -->
+              <a-sphere position="0 0.5 0" radius="0.4" color="#444"></a-sphere>
+
+          </a-entity>
         </a-entity>
 
+        <!-- WORLD -->
         <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
         <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
-        
+
         <a-light type="ambient" intensity="0.5"></a-light>
         <a-light type="directional" position="1 1 1"></a-light>
+
     </a-scene>
 </body>
 </html>
