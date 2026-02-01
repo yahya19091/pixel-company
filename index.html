@@ -2,195 +2,136 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Pixel Company – Gorilla Locomotion</title>
+<title>Pixel Company – Gorilla Prototype Fixed</title>
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
 <script>
 /* =========================================================
-   PLAYER HEALTH
+   SNAP TURN (Simplified & Stable)
 ========================================================= */
-AFRAME.registerComponent('player-health', {
-  schema: { max: { default: 100 } },
-
+AFRAME.registerComponent('snap-turn', {
   init() {
-    this.health = this.data.max;
-    this.ui = document.querySelector('#healthText');
-    this.updateUI();
+    this.cooldown = false;
   },
-
-  damage(amount) {
-    this.health = Math.max(0, this.health - amount);
-    this.updateUI();
-  },
-
-  heal(amount) {
-    this.health = Math.min(this.data.max, this.health + amount);
-    this.updateUI();
-  },
-
-  updateUI() {
-    if (this.ui)
-      this.ui.setAttribute('value', `HP: ${this.health}`);
-  }
-});
-
-/* =========================================================
-   HAND FOLLOW (SMOOTH + LIMITED REACH)
-========================================================= */
-AFRAME.registerComponent('hand-follow', {
-  schema: {
-    target: { type: 'selector' },
-    rig: { type: 'selector' },
-    maxLength: { default: 0.75 },
-    smooth: { default: 0.35 }
-  },
-
-  init() {
-    this.tmp = new THREE.Vector3();
-  },
-
   tick() {
-    if (!this.data.target || !this.data.rig) return;
+    const gp = navigator.getGamepads()[1]; // Right controller
+    if (!gp || this.cooldown) return;
 
-    const rigPos = this.data.rig.object3D.position;
-    const target = this.data.target.object3D;
-    const hand = this.el.object3D;
-
-    this.tmp.copy(target.position);
-    const offset = this.tmp.clone().sub(rigPos);
-
-    if (offset.length() > this.data.maxLength) {
-      offset.setLength(this.data.maxLength);
-      this.tmp.copy(rigPos).add(offset);
+    const xAxis = gp.axes[2] || gp.axes[0]; 
+    if (Math.abs(xAxis) > 0.8) {
+      this.el.object3D.rotation.y -= Math.sign(xAxis) * THREE.MathUtils.degToRad(30);
+      this.cooldown = true;
+      setTimeout(() => this.cooldown = false, 250);
     }
-
-    hand.position.lerp(this.tmp, this.data.smooth);
-    hand.quaternion.slerp(target.quaternion, this.data.smooth);
   }
 });
 
 /* =========================================================
-   GORILLA PHYSICS (HEAVY + STABLE)
+   GORILLA PHYSICS (Centralized to Rig)
 ========================================================= */
 AFRAME.registerComponent('gorilla-physics', {
   schema: {
-    rig: { type: 'selector' },
-    strength: { default: 1.6 },
-    gravity: { default: -22 },
-    maxVel: { default: 7 }
+    strength: { default: 2.0 },
+    gravity: { default: -20 },
+    maxSpeed: { default: 15 }
   },
-
   init() {
     this.vel = new THREE.Vector3();
-    this.prev = new THREE.Vector3();
-    this.curr = new THREE.Vector3();
-    this.handVel = new THREE.Vector3();
-    this.cooldown = 0;
-
     this.ray = new THREE.Raycaster();
     this.down = new THREE.Vector3(0, -1, 0);
+    this.hands = [];
     this.surfaces = [];
-
+    
     this.el.sceneEl.addEventListener('loaded', () => {
-      this.surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')]
-        .map(e => e.object3D);
+      this.surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')].map(e => e.object3D);
+      this.hands = [
+        { el: document.querySelector('#leftHand'), prev: new THREE.Vector3(), curr: new THREE.Vector3() },
+        { el: document.querySelector('#rightHand'), prev: new THREE.Vector3(), curr: new THREE.Vector3() }
+      ];
     });
   },
-
-  tick(t, dtMs) {
-    if (!dtMs || !this.data.rig) return;
+  tick(_, dtMs) {
+    if (!dtMs || !this.hands[0]?.el) return;
     const dt = dtMs / 1000;
-    const rig = this.data.rig.object3D;
+    const rig = this.el.object3D;
 
-    if (this.cooldown > 0) this.cooldown -= dt;
+    // 1. Calculate Hand Velocities & Check Collisions
+    this.hands.forEach(h => {
+      h.el.object3D.getWorldPosition(h.curr);
+      const hVel = h.curr.clone().sub(h.prev).divideScalar(dt);
+      
+      this.ray.set(h.curr, this.down);
+      const hits = this.ray.intersectObjects(this.surfaces, true);
 
-    this.el.object3D.getWorldPosition(this.curr);
-    this.handVel.copy(this.curr).sub(this.prev).divideScalar(dt);
-    this.prev.copy(this.curr);
+      // Only push if hand is near a surface and moving down
+      if (hits.length && hits[0].distance < 0.2 && hVel.y < -0.2) {
+        this.vel.x = -hVel.x * this.data.strength;
+        this.vel.z = -hVel.z * this.data.strength;
+        this.vel.y = -hVel.y * (this.data.strength * 1.5);
+        
+        // Safety Speed Cap
+        this.vel.y = Math.min(this.vel.y, this.data.maxSpeed);
+      }
+      h.prev.copy(h.curr);
+    });
 
-    this.ray.set(this.curr, this.down);
-    const hits = this.ray.intersectObjects(this.surfaces, true);
-
-    if (
-      hits.length &&
-      hits[0].distance < 0.18 &&
-      this.handVel.y < -0.25 &&
-      this.cooldown <= 0
-    ) {
-      this.vel.set(
-        -this.handVel.x * this.data.strength,
-        -this.handVel.y * this.data.strength * 1.05,
-        -this.handVel.z * this.data.strength
-      );
-
-      this.vel.clampScalar(-this.data.maxVel, this.data.maxVel);
-      this.cooldown = 0.12;
-
-      const gp = this.el.components['tracked-controls']?.controller;
-      gp?.hapticActuators?.[0]?.pulse(0.4, 40);
-    }
-
+    // 2. Apply Gravity & Movement
     this.vel.y += this.data.gravity * dt;
     rig.position.addScaledVector(this.vel, dt);
 
-    if (rig.position.y < 0) {
+    // 3. Hard Grounding (Anti-Bounce / Anti-Float)
+    if (rig.position.y <= 0) {
       rig.position.y = 0;
-      this.vel.y = 0;
-      this.vel.x *= 0.8;
-      this.vel.z *= 0.8;
+      if (this.vel.y < 0) this.vel.y = 0;
+      this.vel.multiplyScalar(0.85); // Ground Friction
+    } else {
+      this.vel.multiplyScalar(0.98); // Air Resistance
     }
+  }
+});
 
-    this.vel.x *= 0.92;
-    this.vel.z *= 0.92;
+/* =========================================================
+   HAND FOLLOW (Cleaned Up)
+========================================================= */
+AFRAME.registerComponent('hand-follow', {
+  schema: { target: { type: 'selector' } },
+  tick() {
+    if (!this.data.target) return;
+    this.el.object3D.position.copy(this.data.target.object3D.position);
+    this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
   }
 });
 </script>
 </head>
 
 <body>
-<a-scene background="color: #87CEEB">
+<a-scene background="color: #87CEEB" renderer="antialias: true">
+  
+  <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
+  <a-entity light="type: directional; intensity: 0.5" position="1 2 1"></a-entity>
 
-  <!-- PLAYER -->
-  <a-entity id="rig" position="0 0.2 0" player-health>
-    <a-camera>
-      <!-- HEALTH UI -->
-      <a-text id="healthText"
-              value="HP: 100"
-              position="-0.4 -0.4 -1"
-              scale="0.6 0.6 0.6"
-              color="#ff3333">
-      </a-text>
-    </a-camera>
+  <a-entity id="rig" gorilla-physics snap-turn position="0 0 0">
+    <a-entity camera look-controls="pointerLockEnabled: true" position="0 1.6 0" camera="near: 0.05"></a-entity>
 
-    <!-- CONTROLLERS -->
-    <a-entity id="lc" tracked-controls="hand: left"></a-entity>
-    <a-entity id="rc" tracked-controls="hand: right"></a-entity>
-
-    <!-- LEFT HAND -->
-    <a-entity hand-follow="target:#lc; rig:#rig"
-              gorilla-physics="rig:#rig">
-      <a-sphere radius="0.05" color="#222"></a-sphere>
-      <a-cylinder radius="0.015" height="0.08" position="0 0 -0.06"></a-cylinder>
-      <a-cylinder radius="0.012" height="0.06" position="0.02 0 -0.05"></a-cylinder>
-      <a-cylinder radius="0.012" height="0.06" position="-0.02 0 -0.05"></a-cylinder>
+    <a-entity position="0 0.8 0">
+      <a-sphere radius="0.35" color="white" scale="1 1.2 0.8"></a-sphere>
     </a-entity>
 
-    <!-- RIGHT HAND -->
-    <a-entity hand-follow="target:#rc; rig:#rig"
-              gorilla-physics="rig:#rig">
-      <a-sphere radius="0.05" color="#222"></a-sphere>
-      <a-cylinder radius="0.015" height="0.08" position="0 0 -0.06"></a-cylinder>
-      <a-cylinder radius="0.012" height="0.06" position="0.02 0 -0.05"></a-cylinder>
-      <a-cylinder radius="0.012" height="0.06" position="-0.02 0 -0.05"></a-cylinder>
+    <a-entity id="lc" tracked-controls="hand:left"></a-entity>
+    <a-entity id="rc" tracked-controls="hand:right"></a-entity>
+
+    <a-entity id="leftHand" hand-follow="target:#lc">
+      <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
+    </a-entity>
+
+    <a-entity id="rightHand" hand-follow="target:#rc">
+      <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
     </a-entity>
   </a-entity>
 
-  <!-- WORLD -->
-  <a-plane class="climbable" rotation="-90 0 0"
-           width="100" height="100" color="#3A5F0B"></a-plane>
-
+  <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
   <a-box class="climbable" position="2 0.5 -3" color="#777"></a-box>
-  <a-box class="climbable" position="-2 1 -4" height="2" color="#555"></a-box>
 
 </a-scene>
 </body>
