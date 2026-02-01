@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Pixel Company – Gorilla Prototype</title>
+    <title>Pixel Company – Prototype Fixed</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
     <script>
@@ -11,34 +11,25 @@
     ========================================================= */
     AFRAME.registerComponent('snap-turn', {
       schema: {
-        angle: { default: 45 },      // Degrees per snap
-        deadzone: { default: 0.7 },  // Thumbstick threshold
-        cooldown: { default: 250 }   // ms between snaps
+        angle: { default: 45 },
+        deadzone: { default: 0.7 },
+        cooldown: { default: 250 }
       },
-
-      init: function () {
-        this.canSnap = true;
-      },
-
+      init: function () { this.canSnap = true; },
       tick: function () {
         const session = this.el.sceneEl.renderer.xr.getSession();
         if (!session || !this.canSnap) return;
 
-        // Loop sources to find the Right Hand specifically
         for (const source of session.inputSources) {
           if (source.handedness !== 'right' || !source.gamepad) continue;
-
           const axes = source.gamepad.axes;
-          const x = axes[2] || axes[0]; // Standard thumbstick X
+          const x = axes[2] || axes[0]; 
 
           if (Math.abs(x) > this.data.deadzone) {
             const direction = x > 0 ? -1 : 1;
             const rad = (this.data.angle * direction) * (Math.PI / 180);
-
-            // Rotate the Rig
             this.el.object3D.rotation.y += rad;
 
-            // Small haptic pulse for feedback
             if (source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
               source.gamepad.hapticActuators[0].pulse(0.3, 100);
             }
@@ -52,20 +43,19 @@
     });
 
     /* =========================================================
-       HAND FOLLOW (Local Space Connection)
+       HAND FOLLOW
     ========================================================= */
     AFRAME.registerComponent('hand-follow', {
       schema: { target: { type: 'selector' } },
       tick: function () {
         if (!this.data.target) return;
-        // Copying local position/rotation ensures hands turn WITH the rig
         this.el.object3D.position.copy(this.data.target.object3D.position);
         this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
       }
     });
 
     /* =========================================================
-       GORILLA PHYSICS (Movement + Floor Collision)
+       GORILLA PHYSICS (Direction-Aware Fix)
     ========================================================= */
     AFRAME.registerComponent('gorilla-physics', {
       schema: {
@@ -90,18 +80,24 @@
           if (!hand) return;
 
           const currPos = hand.object3D.position;
-          const handVel = currPos.clone().sub(prevPos).divideScalar(dt);
+          // 1. Calculate velocity in LOCAL space (relative to rig)
+          const handVelLocal = currPos.clone().sub(prevPos).divideScalar(dt);
           
           hand.object3D.getWorldPosition(this.worldPos);
           this.ray.set(this.worldPos, new THREE.Vector3(0, -1, 0));
           const hits = this.ray.intersectObjects(surfaces, true);
 
-          if (hits.length && hits[0].distance < 0.18 && handVel.y < -0.2) {
-            this.vel.x = -handVel.x * this.data.strength;
-            this.vel.z = -handVel.z * this.data.strength;
-            this.vel.y = -handVel.y * (this.data.strength * 1.5);
+          if (hits.length && hits[0].distance < 0.18 && handVelLocal.y < -0.2) {
+            
+            // 2. CONVERT LOCAL VELOCITY TO WORLD VELOCITY
+            // This rotates the force based on the Rig's current Y-rotation
+            const worldVel = handVelLocal.clone().applyQuaternion(rig.quaternion);
 
-            // Impact haptics
+            // 3. Apply the rotated force
+            this.vel.x = -worldVel.x * this.data.strength;
+            this.vel.z = -worldVel.z * this.data.strength;
+            this.vel.y = -worldVel.y * (this.data.strength * 1.5);
+
             const gp = navigator.getGamepads()[gpIdx];
             if (gp?.hapticActuators?.[0]) gp.hapticActuators[0].pulse(0.6, 50);
           }
@@ -127,25 +123,16 @@
 
 <body>
     <a-scene background="color: #111">
-        
         <a-entity id="rig" position="0 3 0" snap-turn="angle: 45" gorilla-physics>
             <a-camera look-controls camera="near: 0.05"></a-camera>
-
             <a-entity id="lc" tracked-controls="hand:left"></a-entity>
             <a-entity id="rc" tracked-controls="hand:right"></a-entity>
 
             <a-entity id="leftHand" hand-follow="target:#lc">
-                <a-box width="0.08" height="0.04" depth="0.08" color="#eee"></a-box>
-                <a-box position="0.02 0 -0.04" width="0.02" height="0.02" depth="0.06" color="#ccc"></a-box>
-                <a-box position="0 0 -0.05" width="0.02" height="0.02" depth="0.07" color="#ccc"></a-box>
-                <a-box position="-0.02 0 -0.04" width="0.02" height="0.02" depth="0.06" color="#ccc"></a-box>
+                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
             </a-entity>
-
             <a-entity id="rightHand" hand-follow="target:#rc">
-                <a-box width="0.08" height="0.04" depth="0.08" color="#eee"></a-box>
-                <a-box position="0.02 0 -0.04" width="0.02" height="0.02" depth="0.06" color="#ccc"></a-box>
-                <a-box position="0 0 -0.05" width="0.02" height="0.02" depth="0.07" color="#ccc"></a-box>
-                <a-box position="-0.02 0 -0.04" width="0.02" height="0.02" depth="0.06" color="#ccc"></a-box>
+                <a-box width="0.1" height="0.05" depth="0.1" color="#eee"></a-box>
             </a-entity>
 
             <a-sphere position="0 0.5 0" radius="0.4" color="#444"></a-sphere>
