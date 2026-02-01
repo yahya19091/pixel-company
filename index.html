@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="manifest" href="manifest.json">
   <meta charset="utf-8">
   <title>Pixel Company – Full VR Game</title>
 
@@ -218,7 +217,7 @@
   });
   </script>
 
-  <!-- ===== VR GRAB (on controllers) ===== -->
+  <!-- ===== VR GRAB (on controllers, using Oculus Touch) ===== -->
   <script>
   AFRAME.registerComponent("vr-grab", {
     schema: { hand: { type: "selector" } },
@@ -294,7 +293,7 @@
     <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true"
               synced-music></a-entity>
 
-    <!-- SKY -->
+    <!-- SKY + LIGHTING -->
     <a-sky id="sky" color="#0a0a33" radius="500"></a-sky>
 
     <a-entity id="sun" light="type:directional; intensity:1"
@@ -310,23 +309,23 @@
       </a-entity>
     </a-template>
 
-    <!-- PLAYER -->
+    <!-- PLAYER (NETWORKED) -->
     <a-entity id="player"
               networked="template:#avatar-template; attachTemplateToLocal:false">
 
       <a-entity id="rig" position="0 1.6 0" snap-turn gorilla-physics>
         <a-camera look-controls camera="near:0.05"></a-camera>
 
-        <!-- Controllers with vr-grab -->
+        <!-- CONTROLLERS WITH VR-GRAB (OCULUS TOUCH) -->
         <a-entity id="lc"
-                  tracked-controls="hand:left"
+                  oculus-touch-controls="hand: left"
                   vr-grab="hand:#leftHand"></a-entity>
 
         <a-entity id="rc"
-                  tracked-controls="hand:right"
+                  oculus-touch-controls="hand: right"
                   vr-grab="hand:#rightHand"></a-entity>
 
-        <!-- Gorilla Tag hands -->
+        <!-- GORILLA HANDS -->
         <a-entity id="leftHand" hand-follow="target:#lc">
           <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
         </a-entity>
@@ -335,7 +334,7 @@
           <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
         </a-entity>
 
-        <!-- Body -->
+        <!-- BODY -->
         <a-sphere position="0 0.5 0" radius="0.4" color="#444"></a-sphere>
       </a-entity>
     </a-entity>
@@ -344,7 +343,7 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- PICKAXE (right in front of you) -->
+    <!-- PICKAXE (IN FRONT OF PLAYER) -->
     <a-entity id="pickaxe"
               gltf-model="url(pickaxe.glb)"
               position="0 1.4 -0.6"
