@@ -3,7 +3,7 @@
 <head>
   <link rel="manifest" href="manifest.json">
   <meta charset="utf-8">
-  <title>Pixel Company – Prototype Synced Music + Day/Night</title>
+  <title>Pixel Company – VR Prototype</title>
 
   <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
@@ -12,7 +12,7 @@
 
   <script>
   /* =========================================================
-     GLOBAL SYNCED MUSIC (Fade-in + X toggle + Host Sync)
+     GLOBAL SYNCED MUSIC
   ========================================================= */
   AFRAME.registerComponent("synced-music", {
     init: function () {
@@ -43,8 +43,7 @@
       });
 
       NAF.connection.subscribeToDataChannel("musicTime", (sender, type, data) => {
-        if (this.isHost) return;
-        this.audio.currentTime = data.t;
+        if (!this.isHost) this.audio.currentTime = data.t;
       });
 
       setTimeout(() => {
@@ -64,10 +63,10 @@
   });
 
   /* =========================================================
-     DAY/NIGHT CYCLE (10 minutes, subtle, solid sky)
+     DAY/NIGHT CYCLE
   ========================================================= */
   AFRAME.registerComponent("day-night-cycle", {
-    schema: { duration: { default: 600000 } }, // 10 minutes
+    schema: { duration: { default: 600000 } },
 
     init: function () {
       this.sky = document.querySelector("#sky");
@@ -77,21 +76,18 @@
 
     tick: function (t) {
       const p = (t % this.data.duration) / this.data.duration;
-
       const angle = p * 360;
       this.sun.setAttribute("rotation", `${angle} 0 0`);
 
       let skyColor;
-      if (p < 0.25) skyColor = "#0a0a33";      // night
-      else if (p < 0.30) skyColor = "#3b4a6b"; // dawn
-      else if (p < 0.70) skyColor = "#87CEEB"; // day
-      else if (p < 0.75) skyColor = "#4a3b6b"; // dusk
-      else skyColor = "#0a0a33";               // night
+      if (p < 0.25) skyColor = "#0a0a33";
+      else if (p < 0.30) skyColor = "#3b4a6b";
+      else if (p < 0.70) skyColor = "#87CEEB";
+      else if (p < 0.75) skyColor = "#4a3b6b";
+      else skyColor = "#0a0a33";
 
       this.sky.setAttribute("color", skyColor);
-
-      const ambIntensity = Math.max(0.2, Math.sin(p * Math.PI));
-      this.amb.setAttribute("intensity", ambIntensity);
+      this.amb.setAttribute("intensity", Math.max(0.2, Math.sin(p * Math.PI)));
     }
   });
 
@@ -125,7 +121,7 @@
   });
 
   /* =========================================================
-     HAND FOLLOW (for Gorilla Tag–style hands)
+     HAND FOLLOW (Gorilla Tag style)
   ========================================================= */
   AFRAME.registerComponent('hand-follow',{
     schema:{target:{type:'selector'}},
@@ -194,7 +190,7 @@
   });
 
   /* =========================================================
-     PICKUP + VR GRAB (Trigger to grab, B/Y to drop)
+     PICKUP + VR GRAB (Trigger grab, B/Y drop)
   ========================================================= */
   AFRAME.registerComponent("pickup", {
     init: function () {
@@ -236,13 +232,13 @@
     tick: function () {
       if (!this.gamepad) return;
 
-      const triggerPressed = this.gamepad.buttons[0]?.pressed; // Trigger
-      const bPressed = this.gamepad.buttons[1]?.pressed;        // B (right)
-      const yPressed = this.gamepad.buttons[3]?.pressed;        // Y (left)
+      const triggerPressed = this.gamepad.buttons[0]?.pressed;
+      const bPressed = this.gamepad.buttons[1]?.pressed;
+      const yPressed = this.gamepad.buttons[3]?.pressed;
 
       if (triggerPressed && !this.grabbing) {
         this.grabbing = true;
-        this.el.emit("grab-attempt", { hand: this.data.hand });
+        this.data.hand.emit("grab-attempt", { hand: this.data.hand });
       }
 
       if (!triggerPressed && this.grabbing) {
@@ -262,54 +258,45 @@
   <a-scene background="color:#111"
            networked-scene="app:gorilla; room:room1; adapter:webrtc; debug:true">
 
-    <!-- Synced background music -->
+    <!-- Music -->
     <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true"
               synced-music></a-entity>
 
-    <!-- Day/Night Cycle -->
+    <!-- Sky -->
     <a-sky id="sky" color="#0a0a33" radius="500"></a-sky>
 
-    <!-- Sun moved FAR away so it never appears as a white rectangle -->
     <a-entity id="sun" light="type:directional; intensity:1"
               position="0 100 0"></a-entity>
 
     <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
     <a-entity day-night-cycle></a-entity>
 
-    <!-- Multiplayer avatar template -->
+    <!-- Multiplayer avatar -->
     <a-template id="avatar-template">
       <a-entity>
         <a-sphere color="#39f" radius="0.3"></a-sphere>
       </a-entity>
     </a-template>
 
-    <!-- Local player -->
+    <!-- Player -->
     <a-entity id="player"
               networked="template:#avatar-template; attachTemplateToLocal:false">
 
-      <a-entity id="rig" position="0 3 0" snap-turn="angle:45" gorilla-physics>
+      <a-entity id="rig" position="0 3 0" snap-turn gorilla-physics>
         <a-camera look-controls camera="near:0.05"></a-camera>
 
         <!-- Raw controller tracking -->
         <a-entity id="lc" tracked-controls="hand:left"></a-entity>
         <a-entity id="rc" tracked-controls="hand:right"></a-entity>
 
-        <!-- Gorilla Tag–style hands (boxy, but follow controllers) -->
-        <a-entity id="leftHand" hand-follow="target:#lc">
-          <a-box width="0.18" height="0.06" depth="0.28"
-                 color="#cccccc"></a-box>
+        <!-- Gorilla Tag–style hands -->
+        <a-entity id="leftHand" hand-follow="target:#lc" vr-grab="hand:#leftHand">
+          <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
         </a-entity>
 
-        <a-entity id="rightHand" hand-follow="target:#rc">
-          <a-box width="0.18" height="0.06" depth="0.28"
-                 color="#cccccc"></a-box>
+        <a-entity id="rightHand" hand-follow="target:#rc" vr-grab="hand:#rightHand">
+          <a-box width="0.18" height="0.06" depth="0.28" color="#ccc"></a-box>
         </a-entity>
-
-        <!-- Grab logic lives on the controller entities -->
-        <a-entity id="lcGrab" tracked-controls="hand:left"
-                  vr-grab="hand: #leftHand"></a-entity>
-        <a-entity id="rcGrab" tracked-controls="hand:right"
-                  vr-grab="hand: #rightHand"></a-entity>
 
         <!-- Body -->
         <a-sphere position="0 0.5 0" radius="0.4" color="#444"></a-sphere>
@@ -320,10 +307,10 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- Pickaxe on the floor (scaled down) -->
+    <!-- Pickaxe (scaled + lifted) -->
     <a-entity id="pickaxe"
               gltf-model="url(pickaxe.glb)"
-              position="0 0 -2"
+              position="0 0.25 -2"
               rotation="0 45 0"
               scale="0.08 0.08 0.08"
               pickup></a-entity>
