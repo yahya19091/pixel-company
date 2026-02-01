@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <title>Pixel Company – Gorilla Prototype</title>
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-<script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
 <script>
 /* =========================================================
@@ -15,18 +14,14 @@ AFRAME.registerComponent('snap-turn', {
     this.cooldown = false;
   },
   tick() {
-    // Gamepad 1 is usually the Right Controller
     const gp = navigator.getGamepads()[1] || navigator.getGamepads()[0];
     if (!gp || this.cooldown) return;
 
-    // Axis 2 is usually the horizontal stick on Quest
     const xAxis = gp.axes[2] || gp.axes[0]; 
-
     if (Math.abs(xAxis) > 0.7) {
-      this.el.object3D.rotation.y -= Math.sign(xAxis) * THREE.MathUtils.degToRad(30);
-      
+      this.el.object3D.rotation.y -= Math.sign(xAxis) * THREE.MathUtils.degToRad(45);
       this.cooldown = true;
-      setTimeout(() => this.cooldown = false, 250); // 1/4 second delay
+      setTimeout(() => this.cooldown = false, 200);
     }
   }
 });
@@ -38,43 +33,19 @@ AFRAME.registerComponent('hand-follow', {
   schema: { target: { type: 'selector' } },
   tick() {
     if (!this.data.target) return;
-    const hand = this.el.object3D;
-    const controller = this.data.target.object3D;
-
-    // We copy LOCAL position. Since hand and controller are both 
-    // inside the #rig, they stay perfectly aligned.
-    hand.position.copy(controller.position);
-    hand.quaternion.copy(controller.quaternion);
+    // Copy local position/rotation so hands stay locked during Snap Turn
+    this.el.object3D.position.copy(this.data.target.object3D.position);
+    this.el.object3D.quaternion.copy(this.data.target.object3D.quaternion);
   }
 });
 
 /* =========================================================
-   FINGER CURL (Trigger + Grip)
-========================================================= */
-AFRAME.registerComponent('finger-curl', {
-  schema: { hand: { default: 0 } }, 
-  tick() {
-    const gp = navigator.getGamepads()[this.data.hand];
-    if (!gp) return;
-
-    const trigger = gp.buttons[0]?.value || 0;
-    const grip = gp.buttons[1]?.value || 0;
-
-    this.el.object3D.children.forEach((finger, i) => {
-      let curl = grip;
-      if (i === 1) curl = Math.max(trigger, grip); // index finger
-      finger.rotation.x = -curl * 1.2;
-    });
-  }
-});
-
-/* =========================================================
-   GORILLA PHYSICS (Rig-Based)
+   GORILLA PHYSICS (With Haptics)
 ========================================================= */
 AFRAME.registerComponent('gorilla-physics', {
   schema: {
-    strength: { default: 1.8 },
-    gravity: { default: -18 }
+    strength: { default: 2.0 },
+    gravity: { default: -22 }
   },
   init() {
     this.vel = new THREE.Vector3();
@@ -89,39 +60,42 @@ AFRAME.registerComponent('gorilla-physics', {
     const rig = this.el.object3D;
     const surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')].map(e => e.object3D);
 
-    const processHand = (id, prevPos) => {
+    const processHand = (id, prevPos, gpIdx) => {
       const hand = document.querySelector(id);
       if (!hand) return;
 
       const currPos = hand.object3D.position;
       const handVel = currPos.clone().sub(prevPos).divideScalar(dt);
       
-      // We need world position for the floor-hit raycast
       hand.object3D.getWorldPosition(this.worldPos);
       this.ray.set(this.worldPos, new THREE.Vector3(0, -1, 0));
       const hits = this.ray.intersectObjects(surfaces, true);
 
-      if (hits.length && hits[0].distance < 0.15 && handVel.y < -0.2) {
+      if (hits.length && hits[0].distance < 0.18 && handVel.y < -0.2) {
         this.vel.x = -handVel.x * this.data.strength;
         this.vel.z = -handVel.z * this.data.strength;
-        this.vel.y = -handVel.y * (this.data.strength * 1.4);
+        this.vel.y = -handVel.y * (this.data.strength * 1.5);
+
+        // Haptic Feedback
+        const gp = navigator.getGamepads()[gpIdx];
+        if (gp?.hapticActuators?.[0]) {
+          gp.hapticActuators[0].pulse(0.6, 50); 
+        }
       }
       prevPos.copy(currPos);
     };
 
-    processHand('#leftHand', this.prevL);
-    processHand('#rightHand', this.prevR);
+    processHand('#leftHand', this.prevL, 0);
+    processHand('#rightHand', this.prevR, 1);
 
-    // Gravity
     this.vel.y += this.data.gravity * dt;
     rig.position.addScaledVector(this.vel, dt);
 
-    // Grounding (Rig hits floor)
     if (rig.position.y <= 0) {
       rig.position.y = 0;
       if (this.vel.y < 0) this.vel.y = 0;
-      this.vel.x *= 0.8;
-      this.vel.z *= 0.8;
+      this.vel.x *= 0.7; // Friction
+      this.vel.z *= 0.7;
     }
   }
 });
@@ -129,7 +103,7 @@ AFRAME.registerComponent('gorilla-physics', {
 </head>
 
 <body>
-<a-scene background="color: #87CEEB">
+<a-scene background="color: #111">
 
   <a-entity id="rig" position="0 3 0" snap-turn gorilla-physics>
     
@@ -138,14 +112,14 @@ AFRAME.registerComponent('gorilla-physics', {
     <a-entity id="lc" tracked-controls="hand:left"></a-entity>
     <a-entity id="rc" tracked-controls="hand:right"></a-entity>
 
-    <a-entity id="leftHand" hand-follow="target:#lc" finger-curl="hand:0">
+    <a-entity id="leftHand" hand-follow="target:#lc">
       <a-box width="0.08" height="0.04" depth="0.08" color="#eee"></a-box>
       <a-box position="0.02 0 -0.04" width="0.02" height="0.02" depth="0.06"></a-box>
       <a-box position="0 0 -0.05" width="0.02" height="0.02" depth="0.07"></a-box>
       <a-box position="-0.02 0 -0.04" width="0.02" height="0.02" depth="0.06"></a-box>
     </a-entity>
 
-    <a-entity id="rightHand" hand-follow="target:#rc" finger-curl="hand:1">
+    <a-entity id="rightHand" hand-follow="target:#rc">
       <a-box width="0.08" height="0.04" depth="0.08" color="#eee"></a-box>
       <a-box position="0.02 0 -0.04" width="0.02" height="0.02" depth="0.06"></a-box>
       <a-box position="0 0 -0.05" width="0.02" height="0.02" depth="0.07"></a-box>
@@ -156,8 +130,8 @@ AFRAME.registerComponent('gorilla-physics', {
 
   </a-entity>
 
-  <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
-  <a-box class="climbable" position="2 0.5 -3" color="#777"></a-box>
+  <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#333"></a-plane>
+  <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
 </a-scene>
 </body>
