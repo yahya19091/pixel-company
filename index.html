@@ -2,23 +2,33 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Pixel Company – Gorilla Prototype</title>
+<title>Pixel Company – Gorilla Prototype Fixed</title>
+
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
 <script>
 /* =========================================================
-   SNAP TURN (Simplified)
+   SNAP TURN (X button toggle)
 ========================================================= */
 AFRAME.registerComponent('snap-turn', {
   init() {
+    this.enabled = true;
     this.cooldown = false;
   },
   tick() {
-    const gp = navigator.getGamepads()[1] || navigator.getGamepads()[0]; 
-    if (!gp || this.cooldown) return;
+    const gp = navigator.getGamepads()[0] || navigator.getGamepads()[1];
+    if (!gp) return;
 
-    const xAxis = gp.axes[2] || gp.axes[0]; 
+    if (gp.buttons[4]?.pressed && !this.toggleLock) {
+      this.enabled = !this.enabled;
+      this.toggleLock = true;
+    }
+    if (!gp.buttons[4]?.pressed) this.toggleLock = false;
+
+    if (!this.enabled || this.cooldown) return;
+
+    const xAxis = gp.axes[2] || gp.axes[0];
     if (Math.abs(xAxis) > 0.8) {
       this.el.object3D.rotation.y -= Math.sign(xAxis) * THREE.MathUtils.degToRad(30);
       this.cooldown = true;
@@ -28,75 +38,13 @@ AFRAME.registerComponent('snap-turn', {
 });
 
 /* =========================================================
-   GORILLA PHYSICS (Rig-Based)
-========================================================= */
-AFRAME.registerComponent('gorilla-physics', {
-  schema: {
-    strength: { default: 2.0 },
-    gravity: { default: -20 }
-  },
-  init() {
-    this.vel = new THREE.Vector3();
-    this.ray = new THREE.Raycaster();
-    this.down = new THREE.Vector3(0, -1, 0);
-    this.hands = [];
-    
-    // Find hands after scene loads
-    this.el.sceneEl.addEventListener('loaded', () => {
-      this.hands = [
-        { el: document.querySelector('#leftHand'), prev: new THREE.Vector3(), curr: new THREE.Vector3() },
-        { el: document.querySelector('#rightHand'), prev: new THREE.Vector3(), curr: new THREE.Vector3() }
-      ];
-      this.surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')].map(e => e.object3D);
-    });
-  },
-  tick(_, dtMs) {
-    if (!dtMs || !this.hands.length) return;
-    const dt = dtMs / 1000;
-    const rig = this.el.object3D;
-
-    // Check both hands for floor slaps
-    this.hands.forEach(h => {
-      if (!h.el) return;
-      h.el.object3D.getWorldPosition(h.curr);
-      
-      // Calculate hand speed
-      const hVel = h.curr.clone().sub(h.prev).divideScalar(dt);
-      
-      // Raycast from hand to floor
-      this.ray.set(h.curr, this.down);
-      const hits = this.ray.intersectObjects(this.surfaces, true);
-
-      // If hand is near surface and moving down fast
-      if (hits.length && hits[0].distance < 0.2 && hVel.y < -0.2) {
-        this.vel.x = -hVel.x * this.data.strength;
-        this.vel.z = -hVel.z * this.data.strength;
-        this.vel.y = -hVel.y * (this.data.strength * 1.5);
-      }
-      h.prev.copy(h.curr);
-    });
-
-    // Apply Gravity (This makes the Rig fall)
-    this.vel.y += this.data.gravity * dt;
-    rig.position.addScaledVector(this.vel, dt);
-
-    // Stop at Floor
-    if (rig.position.y <= 0) {
-      rig.position.y = 0;
-      if (this.vel.y < 0) this.vel.y = 0;
-      this.vel.multiplyScalar(0.85); // Ground Friction
-    }
-  }
-});
-
-/* =========================================================
-   HAND FOLLOW (Arm length limited)
+   HAND FOLLOW (Your original logic)
 ========================================================= */
 AFRAME.registerComponent('hand-follow', {
   schema: {
     target: { type: 'selector' },
     rig: { type: 'selector' },
-    maxLength: { default: 0.9 }
+    maxLength: { default: 0.8 }
   },
   init() { this.tmp = new THREE.Vector3(); },
   tick() {
@@ -113,39 +61,123 @@ AFRAME.registerComponent('hand-follow', {
       this.tmp.copy(rigPos).add(offset);
     }
 
-    hand.position.copy(this.tmp); // Faster tracking
-    hand.quaternion.copy(t.quaternion);
+    hand.position.lerp(this.tmp, 0.4);
+    hand.quaternion.slerp(t.quaternion, 0.4);
+  }
+});
+
+/* =========================================================
+   FINGER CURL
+========================================================= */
+AFRAME.registerComponent('finger-curl', {
+  schema: { hand: { default: 0 } },
+  tick() {
+    const gp = navigator.getGamepads()[this.data.hand];
+    if (!gp) return;
+    const trigger = gp.buttons[0]?.value || 0;
+    const grip = gp.buttons[1]?.value || 0;
+    this.el.object3D.children.forEach((finger, i) => {
+      let curl = grip;
+      if (i === 1) curl = Math.max(trigger, grip);
+      finger.rotation.x = -curl * 1.2;
+    });
+  }
+});
+
+/* =========================================================
+   GORILLA PHYSICS (Stable + Falling Fix)
+========================================================= */
+AFRAME.registerComponent('gorilla-physics', {
+  schema: {
+    strength: { default: 1.8 },
+    gravity: { default: -18 },
+    maxSpeed: { default: 12 }
+  },
+  init() {
+    this.vel = new THREE.Vector3();
+    this.handPrevL = new THREE.Vector3();
+    this.handPrevR = new THREE.Vector3();
+    this.temp = new THREE.Vector3();
+    this.ray = new THREE.Raycaster();
+  },
+  tick(_, dtMs) {
+    if (!dtMs) return;
+    const dt = Math.min(dtMs / 1000, 0.033);
+    const rig = this.el.object3D;
+    const surfaces = [...this.el.sceneEl.querySelectorAll('.climbable')].map(e => e.object3D);
+
+    const checkHand = (id, prevPos) => {
+      const hand = document.querySelector(id);
+      if (!hand) return;
+      this.temp.setFromMatrixPosition(hand.object3D.matrixWorld);
+      
+      const handVel = this.temp.clone().sub(prevPos).divideScalar(dt);
+      
+      this.ray.set(this.temp, new THREE.Vector3(0, -1, 0));
+      const hits = this.ray.intersectObjects(surfaces, true);
+
+      // Slap detection
+      if (hits.length && hits[0].distance < 0.15 && handVel.y < -0.2) {
+        this.vel.x = -handVel.x * this.data.strength;
+        this.vel.z = -handVel.z * this.data.strength;
+        this.vel.y = -handVel.y * (this.data.strength * 1.2);
+      }
+      prevPos.copy(this.temp);
+    };
+
+    checkHand('#leftHand', this.handPrevL);
+    checkHand('#rightHand', this.handPrevR);
+
+    // Apply Gravity
+    this.vel.y += this.data.gravity * dt;
+    
+    // Safety Clamp (No more flying to space)
+    if (this.vel.length() > this.data.maxSpeed) this.vel.setLength(this.data.maxSpeed);
+
+    rig.position.addScaledVector(this.vel, dt);
+
+    // Grounding (Fall until player model touches ground)
+    if (rig.position.y <= 0) {
+      rig.position.y = 0;
+      if (this.vel.y < 0) this.vel.y = 0;
+      this.vel.x *= 0.85; 
+      this.vel.z *= 0.85;
+    }
   }
 });
 </script>
 </head>
 
 <body>
-<a-scene networked-scene="room: pixel-company; debug: false">
+<a-scene networked-scene="room: pixel-company; debug: false" background="color: #87CEEB">
 
-  <a-entity light="type: hemisphere; intensity: 1.2"></a-entity>
+<a-entity id="rig" position="0 2 0" gorilla-physics snap-turn>
+  
+  <a-camera look-controls camera="near: 0.05"></a-camera>
 
-  <a-entity id="rig" position="0 2 0" gorilla-physics snap-turn>
+  <a-entity id="lc" tracked-controls="hand:left"></a-entity>
+  <a-entity id="rc" tracked-controls="hand:right"></a-entity>
 
-    <a-camera look-controls camera="near: 0.05"></a-camera>
-
-    <a-entity id="lc" tracked-controls="hand:left"></a-entity>
-    <a-entity id="rc" tracked-controls="hand:right"></a-entity>
-
-    <a-entity id="leftHand" hand-follow="target:#lc; rig:#rig">
-      <a-box width="0.1" height="0.05" depth="0.1" color="white"></a-box>
-    </a-entity>
-
-    <a-entity id="rightHand" hand-follow="target:#rc; rig:#rig">
-      <a-box width="0.1" height="0.05" depth="0.1" color="white"></a-box>
-    </a-entity>
-
-    <a-sphere position="0 0.8 0" radius="0.4" color="white" scale="1 1.2 0.8"></a-sphere>
-
+  <a-entity id="leftHand" hand-follow="target:#lc; rig:#rig" finger-curl="hand:0">
+    <a-box width="0.08" height="0.04" depth="0.08" color="#eee"></a-box>
+    <a-box position="0.02 0 -0.04" width="0.02" height="0.02" depth="0.06"></a-box>
+    <a-box position="0 0 -0.05" width="0.02" height="0.02" depth="0.07"></a-box>
+    <a-box position="-0.02 0 -0.04" width="0.02" height="0.02" depth="0.06"></a-box>
   </a-entity>
 
-  <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
-  <a-box class="climbable" position="2 0.5 -3" color="#777"></a-box>
+  <a-entity id="rightHand" hand-follow="target:#rc; rig:#rig" finger-curl="hand:1">
+    <a-box width="0.08" height="0.04" depth="0.08" color="#eee"></a-box>
+    <a-box position="0.02 0 -0.04" width="0.02" height="0.02" depth="0.06"></a-box>
+    <a-box position="0 0 -0.05" width="0.02" height="0.02" depth="0.07"></a-box>
+    <a-box position="-0.02 0 -0.04" width="0.02" height="0.02" depth="0.06"></a-box>
+  </a-entity>
+
+  <a-sphere position="0 0.4 0" radius="0.4" color="white"></a-sphere>
+
+</a-entity>
+
+<a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#3A5F0B"></a-plane>
+<a-box class="climbable" position="2 0.5 -3" color="#777"></a-box>
 
 </a-scene>
 </body>
