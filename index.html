@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Pixel Company – Full Game (No Pickaxe)</title>
+  <title>Pixel Company – Full VR Game</title>
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
@@ -184,71 +184,6 @@
     }
   });
   </script>
-
-  <!-- PICKUP -->
-  <script>
-  AFRAME.registerComponent("pickup", {
-    init: function () {
-      this.isGrabbed = false;
-      this.el.classList.add("grabbable");
-    },
-    events: {
-      'grab-attempt': function (evt) {
-        if (this.isGrabbed) return;
-        
-        const handEl = evt.detail.hand;
-        const handPos = new THREE.Vector3();
-        const itemPos = new THREE.Vector3();
-        
-        handEl.object3D.getWorldPosition(handPos);
-        this.el.object3D.getWorldPosition(itemPos);
-
-        if (handPos.distanceTo(itemPos) < 0.6) {
-          this.isGrabbed = true;
-          this.grabber = handEl;
-
-          handEl.object3D.attach(this.el.object3D);
-
-          this.el.object3D.position.set(0, 0, -0.2);
-          this.el.object3D.rotation.set(0, 0, 0);
-
-          this.el.emit("grab-start");
-        }
-      },
-      'grab-end': function () {
-        if (!this.isGrabbed) return;
-        this.isGrabbed = false;
-
-        this.el.sceneEl.object3D.attach(this.el.object3D);
-        this.grabber = null;
-      }
-    }
-  });
-  </script>
-
-  <!-- VR GRAB -->
-  <script>
-  AFRAME.registerComponent("vr-grab", {
-    schema: { hand: { type: "selector" } },
-    init: function () {
-      const events = ['triggerdown', 'gripdown', 'selectstart'];
-      const releaseEvents = ['triggerup', 'gripup', 'selectend'];
-      
-      events.forEach(en => {
-        this.el.addEventListener(en, () => {
-          this.data.hand.emit("grab-attempt", { hand: this.data.hand });
-        });
-      });
-
-      releaseEvents.forEach(en => {
-        this.el.addEventListener(en, () => {
-          this.data.hand.emit("grab-end");
-        });
-      });
-    }
-  });
-  </script>
-
 </head>
 
 <body>
@@ -283,29 +218,23 @@
       <a-entity id="rig" position="0 0 0" snap-turn gorilla-physics>
         <a-camera id="head" look-controls camera="near:0.05" position="0 1.6 0"></a-camera>
 
-        <!-- LEFT CONTROLLER + HAND -->
+        <!-- Controllers -->
         <a-entity id="lc"
-                  oculus-touch-controls="hand: left"
-                  vr-grab="hand:#leftHand">
+                  oculus-touch-controls="hand: left"></a-entity>
 
-          <a-entity id="leftHand">
-            <a-box width="0.1" height="0.1" depth="0.1" color="red"></a-box>
-          </a-entity>
-
-        </a-entity>
-
-        <!-- RIGHT CONTROLLER + HAND -->
         <a-entity id="rc"
-                  oculus-touch-controls="hand: right"
-                  vr-grab="hand:#rightHand">
+                  oculus-touch-controls="hand: right"></a-entity>
 
-          <a-entity id="rightHand">
-            <a-box width="0.1" height="0.1" depth="0.1" color="red"></a-box>
-          </a-entity>
-
+        <!-- Hands following controllers -->
+        <a-entity id="leftHand" hand-follow="target:#lc">
+          <a-box width="0.1" height="0.1" depth="0.1" color="#ccc" opacity="0.5"></a-box>
         </a-entity>
 
-        <!-- BODY -->
+        <a-entity id="rightHand" hand-follow="target:#rc">
+          <a-box width="0.1" height="0.1" depth="0.1" color="#ccc" opacity="0.5"></a-box>
+        </a-entity>
+
+        <!-- Body -->
         <a-sphere position="0 0.8 0" radius="0.4" color="#444"></a-sphere>
       </a-entity>
     </a-entity>
@@ -314,7 +243,7 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- PICKAXE REMOVED -->
+    <!-- NO PICKAXE / NO YELLOW BOX -->
 
   </a-scene>
 </body>
