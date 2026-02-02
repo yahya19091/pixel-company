@@ -7,6 +7,14 @@
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
+  <!-- RANDOM COLOR PER PLAYER -->
+  <script>
+    function getRandomColor() {
+      const colors = ["#ff4444", "#44ff44", "#4444ff", "#ffff44", "#ff44ff", "#44ffff"];
+      return colors[Math.floor(Math.random() * colors.length)];
+    }
+  </script>
+
   <!-- SYNCED MUSIC -->
   <script>
   AFRAME.registerComponent("synced-music", {
@@ -192,7 +200,27 @@
 
     <!-- ASSETS -->
     <a-assets>
-      <a-asset-item id="pickaxeModel" src="pickaxe.glb"></a-asset-item>
+
+      <!-- NETWORKED HEAD TEMPLATE -->
+      <a-template id="head-template">
+        <a-entity>
+          <a-sphere radius="0.2"></a-sphere>
+        </a-entity>
+      </a-template>
+
+      <!-- NETWORKED HAND TEMPLATES -->
+      <a-template id="left-hand-template">
+        <a-entity>
+          <a-box width="0.1" height="0.1" depth="0.1"></a-box>
+        </a-entity>
+      </a-template>
+
+      <a-template id="right-hand-template">
+        <a-entity>
+          <a-box width="0.1" height="0.1" depth="0.1"></a-box>
+        </a-entity>
+      </a-template>
+
     </a-assets>
 
     <!-- MUSIC -->
@@ -206,9 +234,7 @@
 
     <!-- MULTIPLAYER AVATAR TEMPLATE -->
     <a-template id="avatar-template">
-      <a-entity>
-        <a-sphere color="#39f" radius="0.3"></a-sphere>
-      </a-entity>
+      <a-entity></a-entity>
     </a-template>
 
     <!-- PLAYER -->
@@ -216,26 +242,36 @@
               networked="template:#avatar-template; attachTemplateToLocal:false">
 
       <a-entity id="rig" position="0 0 0" snap-turn gorilla-physics>
-        <a-camera id="head" look-controls camera="near:0.05" position="0 1.6 0"></a-camera>
 
-        <!-- Controllers -->
-        <a-entity id="lc"
-                  oculus-touch-controls="hand: left"></a-entity>
-
-        <a-entity id="rc"
-                  oculus-touch-controls="hand: right"></a-entity>
-
-        <!-- Hands following controllers -->
-        <a-entity id="leftHand" hand-follow="target:#lc">
-          <a-box width="0.1" height="0.1" depth="0.1" color="#ccc" opacity="0.5"></a-box>
+        <!-- NETWORKED HEAD -->
+        <a-entity id="head"
+                  networked="template:#head-template; attachTemplateToLocal:false"
+                  position="0 1.6 0">
         </a-entity>
 
-        <a-entity id="rightHand" hand-follow="target:#rc">
-          <a-box width="0.1" height="0.1" depth="0.1" color="#ccc" opacity="0.5"></a-box>
+        <!-- LOCAL CAMERA (NOT NETWORKED) -->
+        <a-camera id="headCam"
+                  look-controls
+                  camera="near:0.05"
+                  position="0 1.6 0">
+        </a-camera>
+
+        <!-- CONTROLLERS -->
+        <a-entity id="lc" oculus-touch-controls="hand: left"></a-entity>
+        <a-entity id="rc" oculus-touch-controls="hand: right"></a-entity>
+
+        <!-- NETWORKED LEFT HAND -->
+        <a-entity id="leftHand"
+                  hand-follow="target:#lc"
+                  networked="template:#left-hand-template; attachTemplateToLocal:false">
         </a-entity>
 
-        <!-- Body -->
-        <a-sphere position="0 0.8 0" radius="0.4" color="#444"></a-sphere>
+        <!-- NETWORKED RIGHT HAND -->
+        <a-entity id="rightHand"
+                  hand-follow="target:#rc"
+                  networked="template:#right-hand-template; attachTemplateToLocal:false">
+        </a-entity>
+
       </a-entity>
     </a-entity>
 
@@ -243,8 +279,23 @@
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
     <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
 
-    <!-- NO PICKAXE / NO YELLOW BOX -->
-
   </a-scene>
+
+  <!-- APPLY RANDOM COLOR TO NETWORKED PARTS -->
+  <script>
+    AFRAME.registerComponent("apply-random-color", {
+      init: function () {
+        const color = getRandomColor();
+        this.el.addEventListener("instantiated", () => {
+          this.el.querySelector("*").setAttribute("color", color);
+        });
+      }
+    });
+
+    document.querySelector("#head").setAttribute("apply-random-color", "");
+    document.querySelector("#leftHand").setAttribute("apply-random-color", "");
+    document.querySelector("#rightHand").setAttribute("apply-random-color", "");
+  </script>
+
 </body>
 </html>
