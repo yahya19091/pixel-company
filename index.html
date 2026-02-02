@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Pixel Company – Full VR Game</title>
+  <title>Pixel Company – colour update</title>
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
@@ -52,8 +52,17 @@
 
       const grabStart = (evt) => {
         this.grabbing = true;
-        this.grabber = evt.detail.hand;
+        this.grabber = evt.detail.hand || evt.detail.target;
         el.object3D.position.copy(this.grabber.object3D.position);
+
+        // Check if cube is a color changer
+        if(el.hasAttribute("color-changer")) {
+          const newColor = el.getAttribute("color");
+          ["#head","#leftHand","#rightHand"].forEach(id=>{
+            const part = document.querySelector(id);
+            if(part) part.setAttribute("player-color", `color:${newColor}`);
+          });
+        }
       };
 
       const grabEnd = () => {
@@ -285,15 +294,32 @@
     <!-- ================= WORLD ================= -->
     <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
 
-    <!-- ================= GRABBABLE CUBE ================= -->
-    <a-box position="0 1 -2" width="0.4" height="0.4" depth="0.4" color="#ff9900"
-           grabbable
-           networked="template:#right-hand-template; attachTemplateToLocal:false">
-    </a-box>
+    <!-- ================= COLOR PANEL ================= -->
+    <a-box position="1 1 -1" width="2" height="0.2" depth="2" color="#555"></a-box>
+
+    <!-- ================= COLOR CUBES ================= -->
+    <a-box position="0.5 1.2 -1" width="0.4" height="0.4" depth="0.4" color="#ff0000"
+           grabbable color-changer></a-box>
+    <a-box position="1 1.2 -1" width="0.4" height="0.4" depth="0.4" color="#ff7f00"
+           grabbable color-changer></a-box>
+    <a-box position="1.5 1.2 -1" width="0.4" height="0.4" depth="0.4" color="#ffff00"
+           grabbable color-changer></a-box>
+    <a-box position="0.5 1.6 -1" width="0.4" height="0.4" depth="0.4" color="#00ff00"
+           grabbable color-changer></a-box>
+    <a-box position="1 1.6 -1" width="0.4" height="0.4" depth="0.4" color="#0000ff"
+           grabbable color-changer></a-box>
+    <a-box position="1.5 1.6 -1" width="0.4" height="0.4" depth="0.4" color="#4b0082"
+           grabbable color-changer></a-box>
+    <a-box position="1 2 -1" width="0.4" height="0.4" depth="0.4" color="#9400d3"
+           grabbable color-changer></a-box>
+    <a-box position="0.5 2 -1" width="0.4" height="0.4" depth="0.4" color="#ffffff"
+           grabbable color-changer></a-box>
+    <a-box position="1.5 2 -1" width="0.4" height="0.4" depth="0.4" color="#000000"
+           grabbable color-changer></a-box>
 
   </a-scene>
 
-  <!-- ================= APPLY PLAYER COLOR ================= -->
+  <!-- ================= APPLY DEFAULT PLAYER COLOR ================= -->
   <script>
     const chosenColor = "#ff4444";
     ["#head","#leftHand","#rightHand"].forEach(id=>{
