@@ -7,7 +7,7 @@
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
-  <!-- ================= PLAYER COLOR COMPONENT ================= -->
+  <!-- ================= PLAYER COLOR ================= -->
   <script>
   AFRAME.registerComponent("player-color", {
     schema: { color: { default: "#44ff44" } },
@@ -26,10 +26,36 @@
   });
   </script>
 
+  <!-- ================= NAME TAG ================= -->
+  <script>
+  AFRAME.registerComponent("name-tag", {
+    init() {
+      this.label = document.createElement("a-entity");
+
+      this.label.setAttribute("text", {
+        value: "Player",
+        align: "center",
+        color: "#ffffff",
+        width: 2
+      });
+
+      this.label.setAttribute("position", "0 0.35 0");
+      this.label.setAttribute("billboard", "");
+      this.el.appendChild(this.label);
+
+      setTimeout(() => {
+        if (NAF.connection?.adapter?.myId) {
+          this.label.setAttribute("text", "value", NAF.connection.adapter.myId);
+        }
+      }, 1000);
+    }
+  });
+  </script>
+
   <!-- ================= SYNCED MUSIC ================= -->
   <script>
   AFRAME.registerComponent("synced-music", {
-    init: function () {
+    init() {
       this.sound = this.el.components.sound;
       this.audio = this.sound.pool.children[0];
       this.currentVolume = 0;
@@ -49,29 +75,32 @@
         }
       }, 50);
 
-      window.addEventListener("keydown", (e) => {
+      window.addEventListener("keydown", e => {
         if (e.key.toLowerCase() === "x") {
           this.isMuted = !this.isMuted;
           this.sound.setVolume(this.isMuted ? 0 : this.currentVolume);
         }
       });
 
-      NAF.connection.subscribeToDataChannel("musicTime", (sender, type, data) => {
+      NAF.connection.subscribeToDataChannel("musicTime", (_, __, data) => {
         if (!this.isHost) this.audio.currentTime = data.t;
       });
 
       setTimeout(() => {
         this.isHost =
           NAF.connection.isConnected() &&
-          NAF.connection.adapter.myId === NAF.connection.adapter.getRoomOwner();
+          NAF.connection.adapter.myId ===
+          NAF.connection.adapter.getRoomOwner();
       }, 2000);
     },
 
-    tick: function (t) {
+    tick(t) {
       if (!this.isHost) return;
       if (t - this.lastSync > 1000) {
         this.lastSync = t;
-        NAF.connection.broadcastData("musicTime", { t: this.audio.currentTime });
+        NAF.connection.broadcastData("musicTime", {
+          t: this.audio.currentTime
+        });
       }
     }
   });
@@ -82,25 +111,22 @@
   AFRAME.registerComponent("day-night-cycle", {
     schema: { duration: { default: 600000 } },
 
-    init: function () {
+    init() {
       this.sky = document.querySelector("#sky");
       this.sun = document.querySelector("#sun");
       this.amb = document.querySelector("#ambient");
     },
 
-    tick: function (t) {
+    tick(t) {
       const p = (t % this.data.duration) / this.data.duration;
-      const angle = p * 360;
-      this.sun.setAttribute("rotation", `${angle} 0 0`);
-
-      let skyColor;
-      if (p < 0.25) skyColor = "#0a0a33";
-      else if (p < 0.30) skyColor = "#3b4a6b";
-      else if (p < 0.70) skyColor = "#87CEEB";
-      else if (p < 0.75) skyColor = "#4a3b6b";
-      else skyColor = "#0a0a33";
-
-      this.sky.setAttribute("color", skyColor);
+      this.sun.setAttribute("rotation", `${p * 360} 0 0`);
+      this.sky.setAttribute(
+        "color",
+        p < 0.25 ? "#0a0a33" :
+        p < 0.30 ? "#3b4a6b" :
+        p < 0.70 ? "#87CEEB" :
+        p < 0.75 ? "#4a3b6b" : "#0a0a33"
+      );
       this.amb.setAttribute("intensity", Math.max(0.2, Math.sin(p * Math.PI)));
     }
   });
@@ -121,11 +147,8 @@
 
         if(Math.abs(x) > this.data.deadzone){
           const dir = x > 0 ? -1 : 1;
-          this.el.object3D.rotation.y += (this.data.angle * dir) * (Math.PI/180);
-
-          if(source.gamepad.hapticActuators?.[0])
-            source.gamepad.hapticActuators[0].pulse(0.3,100);
-
+          this.el.object3D.rotation.y +=
+            (this.data.angle * dir) * (Math.PI/180);
           this.canSnap = false;
           setTimeout(()=>this.canSnap=true, this.data.cooldown);
           break;
@@ -177,13 +200,9 @@
 
         if(hits.length && hits[0].distance<0.18 && handVelLocal.y<-0.2){
           const worldVel=handVelLocal.clone().applyQuaternion(rig.quaternion);
-
           this.vel.x=-worldVel.x*this.data.strength;
           this.vel.z=-worldVel.z*this.data.strength;
           this.vel.y=-worldVel.y*(this.data.strength*1.5);
-
-          const gp=navigator.getGamepads()[gpIdx];
-          gp?.hapticActuators?.[0]?.pulse(0.6,50);
         }
         prevPos.copy(currPos);
       };
@@ -207,75 +226,63 @@
 
 <body>
   <a-scene background="color:#111"
-           networked-scene="app:gorilla; room:room1; adapter:webrtc; debug:true">
+           networked-scene="app:gorilla; room:room1; adapter:webrtc">
 
-    <!-- ASSETS -->
     <a-assets>
       <a-template id="head-template">
         <a-sphere radius="0.2"></a-sphere>
       </a-template>
-
       <a-template id="left-hand-template">
         <a-box width="0.1" height="0.1" depth="0.1"></a-box>
       </a-template>
-
       <a-template id="right-hand-template">
         <a-box width="0.1" height="0.1" depth="0.1"></a-box>
       </a-template>
     </a-assets>
 
-    <!-- MUSIC -->
     <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true" synced-music></a-entity>
 
-    <!-- SKY -->
-    <a-sky id="sky" color="#0a0a33" radius="500"></a-sky>
-    <a-entity id="sun" light="type:directional; intensity:1" position="0 100 0"></a-entity>
+    <a-sky id="sky" radius="500"></a-sky>
+    <a-entity id="sun" light="type:directional"></a-entity>
     <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
     <a-entity day-night-cycle></a-entity>
 
-    <!-- PLAYER -->
     <a-entity id="player">
       <a-entity id="rig" snap-turn gorilla-physics>
 
         <a-entity id="head"
-                  networked="template:#head-template; attachTemplateToLocal:false"
-                  position="0 1.6 0">
+          networked="template:#head-template; attachTemplateToLocal:false"
+          position="0 1.6 0"
+          name-tag>
         </a-entity>
 
-        <a-camera id="headCam" look-controls position="0 1.6 0"></a-camera>
+        <a-camera position="0 1.6 0"></a-camera>
 
-        <a-entity id="lc" oculus-touch-controls="hand: left"></a-entity>
-        <a-entity id="rc" oculus-touch-controls="hand: right"></a-entity>
+        <a-entity id="lc" oculus-touch-controls="hand:left"></a-entity>
+        <a-entity id="rc" oculus-touch-controls="hand:right"></a-entity>
 
         <a-entity id="leftHand"
-                  hand-follow="target:#lc"
-                  networked="template:#left-hand-template; attachTemplateToLocal:false">
+          hand-follow="target:#lc"
+          networked="template:#left-hand-template; attachTemplateToLocal:false">
         </a-entity>
 
         <a-entity id="rightHand"
-                  hand-follow="target:#rc"
-                  networked="template:#right-hand-template; attachTemplateToLocal:false">
+          hand-follow="target:#rc"
+          networked="template:#right-hand-template; attachTemplateToLocal:false">
         </a-entity>
 
       </a-entity>
     </a-entity>
 
-    <!-- WORLD -->
-    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
-    <a-box class="climbable" position="0 0.5 -5" width="5" height="1" depth="1" color="#555"></a-box>
-
+    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100"></a-plane>
   </a-scene>
 
-  <!-- ================= APPLY CHOSEN COLOR ================= -->
   <script>
-    const chosenColor = "#ff4444"; // CHANGE THIS PER PLAYER LATER
-
-    document.querySelector("#head")
-      .setAttribute("player-color", `color: ${chosenColor}`);
-    document.querySelector("#leftHand")
-      .setAttribute("player-color", `color: ${chosenColor}`);
-    document.querySelector("#rightHand")
-      .setAttribute("player-color", `color: ${chosenColor}`);
+    const chosenColor = "#ff4444";
+    ["#head","#leftHand","#rightHand"].forEach(id=>{
+      document.querySelector(id)
+        .setAttribute("player-color", `color:${chosenColor}`);
+    });
   </script>
 
 </body>
