@@ -11,12 +11,10 @@
   <script>
   AFRAME.registerComponent("player-color", {
     schema: { color: { default: "#44ff44" } },
-
     init() {
       this.applyColor = this.applyColor.bind(this);
       this.el.addEventListener("instantiated", this.applyColor);
     },
-
     applyColor() {
       const color = this.data.color;
       this.el.querySelectorAll("[geometry]").forEach(el => {
@@ -31,23 +29,45 @@
   AFRAME.registerComponent("name-tag", {
     init() {
       this.label = document.createElement("a-entity");
-
-      this.label.setAttribute("text", {
-        value: "Player",
-        align: "center",
-        color: "#ffffff",
-        width: 2
-      });
-
+      this.label.setAttribute("text", { value: "Player", align: "center", color: "#ffffff", width: 2 });
       this.label.setAttribute("position", "0 0.35 0");
       this.label.setAttribute("billboard", "");
       this.el.appendChild(this.label);
-
       setTimeout(() => {
         if (NAF.connection?.adapter?.myId) {
           this.label.setAttribute("text", "value", NAF.connection.adapter.myId);
         }
       }, 1000);
+    }
+  });
+  </script>
+
+  <!-- ================= GRAB COMPONENT ================= -->
+  <script>
+  AFRAME.registerComponent("grabbable", {
+    init() {
+      this.grabbing = false;
+      this.grabber = null;
+      const el = this.el;
+
+      const grabStart = (evt) => {
+        this.grabbing = true;
+        this.grabber = evt.detail.hand;
+        el.object3D.position.copy(this.grabber.object3D.position);
+      };
+
+      const grabEnd = () => {
+        this.grabbing = false;
+        this.grabber = null;
+      };
+
+      el.addEventListener("grab-start", grabStart);
+      el.addEventListener("grab-end", grabEnd);
+    },
+    tick() {
+      if (this.grabbing && this.grabber) {
+        this.el.object3D.position.copy(this.grabber.object3D.position);
+      }
     }
   });
   </script>
@@ -89,18 +109,14 @@
       setTimeout(() => {
         this.isHost =
           NAF.connection.isConnected() &&
-          NAF.connection.adapter.myId ===
-          NAF.connection.adapter.getRoomOwner();
+          NAF.connection.adapter.myId === NAF.connection.adapter.getRoomOwner();
       }, 2000);
     },
-
     tick(t) {
       if (!this.isHost) return;
       if (t - this.lastSync > 1000) {
         this.lastSync = t;
-        NAF.connection.broadcastData("musicTime", {
-          t: this.audio.currentTime
-        });
+        NAF.connection.broadcastData("musicTime", { t: this.audio.currentTime });
       }
     }
   });
@@ -110,13 +126,11 @@
   <script>
   AFRAME.registerComponent("day-night-cycle", {
     schema: { duration: { default: 600000 } },
-
     init() {
       this.sky = document.querySelector("#sky");
       this.sun = document.querySelector("#sun");
       this.amb = document.querySelector("#ambient");
     },
-
     tick(t) {
       const p = (t % this.data.duration) / this.data.duration;
       this.sun.setAttribute("rotation", `${p * 360} 0 0`);
@@ -147,8 +161,7 @@
 
         if(Math.abs(x) > this.data.deadzone){
           const dir = x > 0 ? -1 : 1;
-          this.el.object3D.rotation.y +=
-            (this.data.angle * dir) * (Math.PI/180);
+          this.el.object3D.rotation.y += (this.data.angle * dir) * (Math.PI/180);
           this.canSnap = false;
           setTimeout(()=>this.canSnap=true, this.data.cooldown);
           break;
@@ -229,15 +242,9 @@
            networked-scene="app:gorilla; room:room1; adapter:webrtc">
 
     <a-assets>
-      <a-template id="head-template">
-        <a-sphere radius="0.2"></a-sphere>
-      </a-template>
-      <a-template id="left-hand-template">
-        <a-box width="0.1" height="0.1" depth="0.1"></a-box>
-      </a-template>
-      <a-template id="right-hand-template">
-        <a-box width="0.1" height="0.1" depth="0.1"></a-box>
-      </a-template>
+      <a-template id="head-template"><a-sphere radius="0.2"></a-sphere></a-template>
+      <a-template id="left-hand-template"><a-box width="0.1" height="0.1" depth="0.1"></a-box></a-template>
+      <a-template id="right-hand-template"><a-box width="0.1" height="0.1" depth="0.1"></a-box></a-template>
     </a-assets>
 
     <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true" synced-music></a-entity>
@@ -247,6 +254,7 @@
     <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
     <a-entity day-night-cycle></a-entity>
 
+    <!-- ================= PLAYER ================= -->
     <a-entity id="player">
       <a-entity id="rig" snap-turn gorilla-physics>
 
@@ -274,14 +282,22 @@
       </a-entity>
     </a-entity>
 
-    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100"></a-plane>
+    <!-- ================= WORLD ================= -->
+    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
+
+    <!-- ================= GRABBABLE CUBE ================= -->
+    <a-box position="0 1 -2" width="0.4" height="0.4" depth="0.4" color="#ff9900"
+           grabbable
+           networked="template:#right-hand-template; attachTemplateToLocal:false">
+    </a-box>
+
   </a-scene>
 
+  <!-- ================= APPLY PLAYER COLOR ================= -->
   <script>
     const chosenColor = "#ff4444";
     ["#head","#leftHand","#rightHand"].forEach(id=>{
-      document.querySelector(id)
-        .setAttribute("player-color", `color:${chosenColor}`);
+      document.querySelector(id).setAttribute("player-color", `color:${chosenColor}`);
     });
   </script>
 
