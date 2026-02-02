@@ -7,15 +7,26 @@
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
 
-  <!-- RANDOM COLOR PER PLAYER -->
+  <!-- ================= PLAYER COLOR COMPONENT ================= -->
   <script>
-    function getRandomColor() {
-      const colors = ["#ff4444", "#44ff44", "#4444ff", "#ffff44", "#ff44ff", "#44ffff"];
-      return colors[Math.floor(Math.random() * colors.length)];
+  AFRAME.registerComponent("player-color", {
+    schema: { color: { default: "#44ff44" } },
+
+    init() {
+      this.applyColor = this.applyColor.bind(this);
+      this.el.addEventListener("instantiated", this.applyColor);
+    },
+
+    applyColor() {
+      const color = this.data.color;
+      this.el.querySelectorAll("[geometry]").forEach(el => {
+        el.setAttribute("material", "color", color);
+      });
     }
+  });
   </script>
 
-  <!-- SYNCED MUSIC -->
+  <!-- ================= SYNCED MUSIC ================= -->
   <script>
   AFRAME.registerComponent("synced-music", {
     init: function () {
@@ -66,7 +77,7 @@
   });
   </script>
 
-  <!-- DAY / NIGHT CYCLE -->
+  <!-- ================= DAY / NIGHT ================= -->
   <script>
   AFRAME.registerComponent("day-night-cycle", {
     schema: { duration: { default: 600000 } },
@@ -95,7 +106,7 @@
   });
   </script>
 
-  <!-- SNAP TURN -->
+  <!-- ================= SNAP TURN ================= -->
   <script>
   AFRAME.registerComponent('snap-turn', {
     schema: { angle:{default:45}, deadzone:{default:0.7}, cooldown:{default:250} },
@@ -124,7 +135,7 @@
   });
   </script>
 
-  <!-- HAND FOLLOW -->
+  <!-- ================= HAND FOLLOW ================= -->
   <script>
   AFRAME.registerComponent('hand-follow',{
     schema:{target:{type:'selector'}},
@@ -136,7 +147,7 @@
   });
   </script>
 
-  <!-- GORILLA PHYSICS -->
+  <!-- ================= GORILLA PHYSICS (UNTOUCHED) ================= -->
   <script>
   AFRAME.registerComponent('gorilla-physics',{
     schema:{strength:{default:2.0}, gravity:{default:-20}},
@@ -200,73 +211,47 @@
 
     <!-- ASSETS -->
     <a-assets>
-
-      <!-- NETWORKED HEAD TEMPLATE -->
       <a-template id="head-template">
-        <a-entity>
-          <a-sphere radius="0.2"></a-sphere>
-        </a-entity>
+        <a-sphere radius="0.2"></a-sphere>
       </a-template>
 
-      <!-- NETWORKED HAND TEMPLATES -->
       <a-template id="left-hand-template">
-        <a-entity>
-          <a-box width="0.1" height="0.1" depth="0.1"></a-box>
-        </a-entity>
+        <a-box width="0.1" height="0.1" depth="0.1"></a-box>
       </a-template>
 
       <a-template id="right-hand-template">
-        <a-entity>
-          <a-box width="0.1" height="0.1" depth="0.1"></a-box>
-        </a-entity>
+        <a-box width="0.1" height="0.1" depth="0.1"></a-box>
       </a-template>
-
     </a-assets>
 
     <!-- MUSIC -->
     <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true" synced-music></a-entity>
 
-    <!-- SKY + LIGHTING -->
+    <!-- SKY -->
     <a-sky id="sky" color="#0a0a33" radius="500"></a-sky>
     <a-entity id="sun" light="type:directional; intensity:1" position="0 100 0"></a-entity>
     <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
     <a-entity day-night-cycle></a-entity>
 
-    <!-- MULTIPLAYER AVATAR TEMPLATE -->
-    <a-template id="avatar-template">
-      <a-entity></a-entity>
-    </a-template>
-
     <!-- PLAYER -->
-    <a-entity id="player"
-              networked="template:#avatar-template; attachTemplateToLocal:false">
+    <a-entity id="player">
+      <a-entity id="rig" snap-turn gorilla-physics>
 
-      <a-entity id="rig" position="0 0 0" snap-turn gorilla-physics>
-
-        <!-- NETWORKED HEAD -->
         <a-entity id="head"
                   networked="template:#head-template; attachTemplateToLocal:false"
                   position="0 1.6 0">
         </a-entity>
 
-        <!-- LOCAL CAMERA (NOT NETWORKED) -->
-        <a-camera id="headCam"
-                  look-controls
-                  camera="near:0.05"
-                  position="0 1.6 0">
-        </a-camera>
+        <a-camera id="headCam" look-controls position="0 1.6 0"></a-camera>
 
-        <!-- CONTROLLERS -->
         <a-entity id="lc" oculus-touch-controls="hand: left"></a-entity>
         <a-entity id="rc" oculus-touch-controls="hand: right"></a-entity>
 
-        <!-- NETWORKED LEFT HAND -->
         <a-entity id="leftHand"
                   hand-follow="target:#lc"
                   networked="template:#left-hand-template; attachTemplateToLocal:false">
         </a-entity>
 
-        <!-- NETWORKED RIGHT HAND -->
         <a-entity id="rightHand"
                   hand-follow="target:#rc"
                   networked="template:#right-hand-template; attachTemplateToLocal:false">
@@ -281,20 +266,16 @@
 
   </a-scene>
 
-  <!-- APPLY RANDOM COLOR TO NETWORKED PARTS -->
+  <!-- ================= APPLY CHOSEN COLOR ================= -->
   <script>
-    AFRAME.registerComponent("apply-random-color", {
-      init: function () {
-        const color = getRandomColor();
-        this.el.addEventListener("instantiated", () => {
-          this.el.querySelector("*").setAttribute("color", color);
-        });
-      }
-    });
+    const chosenColor = "#ff4444"; // CHANGE THIS PER PLAYER LATER
 
-    document.querySelector("#head").setAttribute("apply-random-color", "");
-    document.querySelector("#leftHand").setAttribute("apply-random-color", "");
-    document.querySelector("#rightHand").setAttribute("apply-random-color", "");
+    document.querySelector("#head")
+      .setAttribute("player-color", `color: ${chosenColor}`);
+    document.querySelector("#leftHand")
+      .setAttribute("player-color", `color: ${chosenColor}`);
+    document.querySelector("#rightHand")
+      .setAttribute("player-color", `color: ${chosenColor}`);
   </script>
 
 </body>
