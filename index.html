@@ -59,7 +59,6 @@
       const grabStart = (evt) => {
         this.grabbing = true;
         this.grabber = evt.detail.hand || evt.detail.target;
-
         if (!this.grabber) return;
 
         el.object3D.position.copy(this.grabber.object3D.position);
@@ -265,24 +264,27 @@
   });
   </script>
 
-  <!-- ================= VOICE CHAT (NAF MEDIA-STREAM FRIENDLY) ================= -->
+  <!-- ================= VOICE CHAT (P2P, NO EXTRA DOWNLOADS) ================= -->
   <script>
   AFRAME.registerComponent("voice-chat", {
     init() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn("Voice chat: getUserMedia not supported");
+        return;
+      }
 
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
-          // This relies on the networked-aframe adapter supporting media streams
+          // Attach local audio stream to NAF adapter if supported
           if (NAF.connection?.adapter && NAF.connection.adapter.setLocalMediaStream) {
             NAF.connection.adapter.setLocalMediaStream(stream);
           }
 
-          // Local playback (optional)
+          // Local monitoring (muted to avoid echo)
           const audio = document.createElement("audio");
           audio.autoplay = true;
+          audio.muted = true;
           audio.srcObject = stream;
-          audio.muted = true; // avoid echo
           document.body.appendChild(audio);
         })
         .catch(err => {
@@ -313,7 +315,7 @@
         </a-entity>
       </a-template>
 
-      <!-- Local/remote head + hand templates (for networked child entities) -->
+      <!-- Local/remote head + hand templates -->
       <a-template id="head-template">
         <a-sphere radius="0.2"></a-sphere>
       </a-template>
@@ -336,7 +338,7 @@
     <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
     <a-entity day-night-cycle></a-entity>
 
-    <!-- ================= PLAYER (NOW NETWORKED) ================= -->
+    <!-- ================= PLAYER (NETWORKED) ================= -->
     <a-entity id="player"
               networked="template:#avatar-template; attachTemplateToLocal:false">
 
