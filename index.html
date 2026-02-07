@@ -4,8 +4,10 @@
   <meta charset="utf-8">
   <title>Pixel Company – Full VR Game</title>
 
+  <!-- A-Frame + Networked-Aframe + Physics (Cannon.js) -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/n5ro/aframe-physics-system@v4.0.1/dist/aframe-physics-system.min.js"></script>
 
   <!-- ================= PLAYER COLOR ================= -->
   <script>
@@ -48,7 +50,7 @@
   });
   </script>
 
-  <!-- ================= GRAB COMPONENT ================= -->
+  <!-- ================= GRABBABLE ================= -->
   <script>
   AFRAME.registerComponent("grabbable", {
     init() {
@@ -61,6 +63,7 @@
         this.grabber = evt.detail.hand || evt.detail.target;
         if (!this.grabber) return;
 
+        el.body.sleep(); // stop physics while held
         el.object3D.position.copy(this.grabber.object3D.position);
 
         // Color changer logic
@@ -69,7 +72,7 @@
           ["#head", "#leftHand", "#rightHand"].forEach(id => {
             const part = document.querySelector(id);
             if (part) {
-              part.setAttribute("player-color", { color: newColor });
+              part.setAttribute("player-color", "color: " + newColor);
             }
           });
         }
@@ -78,6 +81,7 @@
       const grabEnd = () => {
         this.grabbing = false;
         this.grabber = null;
+        if (el.body) el.body.wakeUp();
       };
 
       el.addEventListener("grab-start", grabStart);
@@ -88,6 +92,38 @@
       if (this.grabbing && this.grabber) {
         this.el.object3D.position.copy(this.grabber.object3D.position);
       }
+    }
+  });
+  </script>
+
+  <!-- ================= HAND GRABBER ================= -->
+  <script>
+  AFRAME.registerComponent("hand-grabber", {
+    init() {
+      this.grabbing = false;
+      this.target = null;
+
+      this.el.addEventListener("triggerdown", () => {
+        if (this.target && !this.grabbing) {
+          this.grabbing = true;
+          this.target.emit("grab-start", { hand: this.el });
+        }
+      });
+
+      this.el.addEventListener("triggerup", () => {
+        if (this.grabbing && this.target) {
+          this.target.emit("grab-end", { hand: this.el });
+        }
+        this.grabbing = false;
+        this.target = null;
+      });
+
+      this.el.addEventListener("collide", (e) => {
+        const other = e.detail.body.el;
+        if (other && other.hasAttribute("grabbable")) {
+          this.target = other;
+        }
+      });
     }
   });
   </script>
@@ -264,7 +300,7 @@
   });
   </script>
 
-  <!-- ================= VOICE CHAT (P2P, NO EXTRA DOWNLOADS) ================= -->
+  <!-- ================= VOICE CHAT (P2P) ================= -->
   <script>
   AFRAME.registerComponent("voice-chat", {
     init() {
@@ -275,12 +311,10 @@
 
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
-          // Attach local audio stream to NAF adapter if supported
           if (NAF.connection?.adapter && NAF.connection.adapter.setLocalMediaStream) {
             NAF.connection.adapter.setLocalMediaStream(stream);
           }
 
-          // Local monitoring (muted to avoid echo)
           const audio = document.createElement("audio");
           audio.autoplay = true;
           audio.muted = true;
@@ -297,6 +331,7 @@
 
 <body>
   <a-scene background="color:#111"
+           physics="debug: false"
            networked-scene="app:gorilla; room:room1; adapter:webrtc">
 
     <!-- VOICE CHAT CONTROLLER -->
@@ -361,11 +396,15 @@
         <!-- NETWORKED HANDS FOLLOWING CONTROLLERS -->
         <a-entity id="leftHand"
                   hand-follow="target:#lc"
+                  hand-grabber
+                  static-body="shape: sphere; radius: 0.08"
                   networked="template:#left-hand-template; attachTemplateToLocal:false">
         </a-entity>
 
         <a-entity id="rightHand"
                   hand-follow="target:#rc"
+                  hand-grabber
+                  static-body="shape: sphere; radius: 0.08"
                   networked="template:#right-hand-template; attachTemplateToLocal:false">
         </a-entity>
 
@@ -373,32 +412,37 @@
     </a-entity>
 
     <!-- ================= WORLD ================= -->
-    <a-plane class="climbable" rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
+    <a-plane class="climbable"
+             rotation="-90 0 0"
+             width="100"
+             height="100"
+             color="#00aa00"
+             static-body></a-plane>
 
     <!-- COLOR PANEL -->
-    <a-box position="1 1 -1" width="2" height="0.2" depth="2" color="#555"></a-box>
+    <a-box position="1 1 -1" width="2" height="0.2" depth="2" color="#555" static-body></a-box>
 
     <!-- COLOR CUBES -->
     <a-box position="0.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ff0000" grabbable color-changer></a-box>
+           color="#ff0000" grabbable color-changer dynamic-body></a-box>
     <a-box position="1 1.2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ff7f00" grabbable color-changer></a-box>
+           color="#ff7f00" grabbable color-changer dynamic-body></a-box>
     <a-box position="1.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ffff00" grabbable color-changer></a-box>
+           color="#ffff00" grabbable color-changer dynamic-body></a-box>
 
     <a-box position="0.5 1.6 -1" width="0.4" height="0.4" depth="0.4"
-           color="#00ff00" grabbable color-changer></a-box>
+           color="#00ff00" grabbable color-changer dynamic-body></a-box>
     <a-box position="1 1.6 -1" width="0.4" height="0.4" depth="0.4"
-           color="#0000ff" grabbable color-changer></a-box>
+           color="#0000ff" grabbable color-changer dynamic-body></a-box>
     <a-box position="1.5 1.6 -1" width="0.4" height="0.4" depth="0.4"
-           color="#4b0082" grabbable color-changer></a-box>
+           color="#4b0082" grabbable color-changer dynamic-body></a-box>
 
     <a-box position="1 2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#9400d3" grabbable color-changer></a-box>
+           color="#9400d3" grabbable color-changer dynamic-body></a-box>
     <a-box position="0.5 2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ffffff" grabbable color-changer></a-box>
+           color="#ffffff" grabbable color-changer dynamic-body></a-box>
     <a-box position="1.5 2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#000000" grabbable color-changer></a-box>
+           color="#000000" grabbable color-changer dynamic-body></a-box>
 
   </a-scene>
 
@@ -408,7 +452,7 @@
     ["#head", "#leftHand", "#rightHand"].forEach(id => {
       const el = document.querySelector(id);
       if (el) {
-        el.setAttribute("player-color", { color: chosenColor });
+        el.setAttribute("player-color", "color: " + chosenColor);
       }
     });
   </script>
