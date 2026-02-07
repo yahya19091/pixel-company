@@ -2,9 +2,9 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Pixel Company – Full VR Game</title>
+  <title>Pixel Company – Multiplayer VR</title>
 
-  <!-- A-Frame + Networked-Aframe + Physics (Cannon.js) -->
+  <!-- A-Frame + Networked-Aframe + Physics -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://unpkg.com/networked-aframe/dist/networked-aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/n5ro/aframe-physics-system@v4.0.1/dist/aframe-physics-system.min.js"></script>
@@ -30,9 +30,10 @@
   <script>
   AFRAME.registerComponent("name-tag", {
     init() {
+      const name = localStorage.getItem("playerName") || "Player";
       this.label = document.createElement("a-entity");
       this.label.setAttribute("text", {
-        value: "Player",
+        value: name,
         align: "center",
         color: "#ffffff",
         width: 2
@@ -40,12 +41,54 @@
       this.label.setAttribute("position", "0 0.35 0");
       this.label.setAttribute("billboard", "");
       this.el.appendChild(this.label);
+    }
+  });
+  </script>
 
-      setTimeout(() => {
-        if (NAF.connection?.adapter?.myId) {
-          this.label.setAttribute("text", "value", NAF.connection.adapter.myId);
+  <!-- ================= COMPUTER INPUT ================= -->
+  <script>
+  AFRAME.registerComponent("computer-input", {
+    init() {
+      this.step = 0;
+      this.buffer = "";
+      this.active = false;
+      this.screen = this.el.querySelector("[text]");
+
+      window.addEventListener("keydown", e => {
+        if (!this.active) return;
+
+        if (e.key === "Enter") {
+          if (this.step === 0) {
+            localStorage.setItem("playerName", this.buffer || "Player");
+            this.buffer = "";
+            this.step = 1;
+            this.screen.setAttribute("text", "value", "Enter Room Code:");
+          } else {
+            localStorage.setItem("roomCode", this.buffer || "room1");
+            location.reload();
+          }
+          return;
         }
-      }, 1000);
+
+        if (e.key === "Backspace") {
+          this.buffer = this.buffer.slice(0, -1);
+        } else if (e.key.length === 1) {
+          this.buffer += e.key;
+        }
+
+        this.screen.setAttribute(
+          "text",
+          "value",
+          (this.step === 0 ? "Name: " : "Room: ") + this.buffer
+        );
+      });
+
+      this.el.addEventListener("click", () => {
+        this.active = true;
+        this.step = 0;
+        this.buffer = "";
+        this.screen.setAttribute("text", "value", "Enter Name:");
+      });
     }
   });
   </script>
@@ -60,20 +103,17 @@
 
       const grabStart = (evt) => {
         this.grabbing = true;
-        this.grabber = evt.detail.hand || evt.detail.target;
+        this.grabber = evt.detail.hand;
         if (!this.grabber) return;
 
-        el.body.sleep(); // stop physics while held
+        el.body.sleep();
         el.object3D.position.copy(this.grabber.object3D.position);
 
-        // Color changer logic
         if (el.hasAttribute("color-changer")) {
           const newColor = el.getAttribute("color");
           ["#head", "#leftHand", "#rightHand"].forEach(id => {
             const part = document.querySelector(id);
-            if (part) {
-              part.setAttribute("player-color", "color: " + newColor);
-            }
+            if (part) part.setAttribute("player-color", "color:" + newColor);
           });
         }
       };
@@ -100,21 +140,18 @@
   <script>
   AFRAME.registerComponent("hand-grabber", {
     init() {
-      this.grabbing = false;
       this.target = null;
 
       this.el.addEventListener("triggerdown", () => {
-        if (this.target && !this.grabbing) {
-          this.grabbing = true;
+        if (this.target) {
           this.target.emit("grab-start", { hand: this.el });
         }
       });
 
       this.el.addEventListener("triggerup", () => {
-        if (this.grabbing && this.target) {
+        if (this.target) {
           this.target.emit("grab-end", { hand: this.el });
         }
-        this.grabbing = false;
         this.target = null;
       });
 
@@ -124,86 +161,6 @@
           this.target = other;
         }
       });
-    }
-  });
-  </script>
-
-  <!-- ================= SYNCED MUSIC ================= -->
-  <script>
-  AFRAME.registerComponent("synced-music", {
-    init() {
-      this.sound = this.el.components.sound;
-      this.audio = this.sound.pool.children[0];
-      this.currentVolume = 0;
-      this.targetVolume = 0.4;
-      this.fadeSpeed = 0.005;
-      this.isMuted = false;
-      this.isHost = false;
-      this.lastSync = 0;
-
-      this.sound.setVolume(0);
-      this.sound.playSound();
-
-      setInterval(() => {
-        if (!this.isMuted && this.currentVolume < this.targetVolume) {
-          this.currentVolume += this.fadeSpeed;
-          this.sound.setVolume(this.currentVolume);
-        }
-      }, 50);
-
-      window.addEventListener("keydown", e => {
-        if (e.key.toLowerCase() === "x") {
-          this.isMuted = !this.isMuted;
-          this.sound.setVolume(this.isMuted ? 0 : this.currentVolume);
-        }
-      });
-
-      NAF.connection.subscribeToDataChannel("musicTime", (_, __, data) => {
-        if (!this.isHost) this.audio.currentTime = data.t;
-      });
-
-      setTimeout(() => {
-        this.isHost =
-          NAF.connection.isConnected() &&
-          NAF.connection.adapter.myId === NAF.connection.adapter.getRoomOwner();
-      }, 2000);
-    },
-
-    tick(t) {
-      if (!this.isHost) return;
-      if (t - this.lastSync > 1000) {
-        this.lastSync = t;
-        NAF.connection.broadcastData("musicTime", { t: this.audio.currentTime });
-      }
-    }
-  });
-  </script>
-
-  <!-- ================= DAY / NIGHT ================= -->
-  <script>
-  AFRAME.registerComponent("day-night-cycle", {
-    schema: { duration: { default: 600000 } },
-
-    init() {
-      this.sky = document.querySelector("#sky");
-      this.sun = document.querySelector("#sun");
-      this.amb = document.querySelector("#ambient");
-    },
-
-    tick(t) {
-      const p = (t % this.data.duration) / this.data.duration;
-      const angle = p * 360;
-      this.sun.setAttribute("rotation", `${angle} 0 0`);
-
-      const skyColor =
-        p < 0.25 ? "#0a0a33" :
-        p < 0.30 ? "#3b4a6b" :
-        p < 0.70 ? "#87CEEB" :
-        p < 0.75 ? "#4a3b6b" :
-                   "#0a0a33";
-
-      this.sky.setAttribute("color", skyColor);
-      this.amb.setAttribute("intensity", Math.max(0.2, Math.sin(p * Math.PI)));
     }
   });
   </script>
@@ -224,7 +181,6 @@
         if(Math.abs(x) > this.data.deadzone){
           const dir = x > 0 ? -1 : 1;
           this.el.object3D.rotation.y += (this.data.angle * dir) * (Math.PI/180);
-
           this.canSnap = false;
           setTimeout(()=>this.canSnap=true, this.data.cooldown);
           break;
@@ -263,7 +219,7 @@
       const rig=this.el.object3D;
       const surfaces=[...this.el.sceneEl.querySelectorAll('.climbable')].map(e=>e.object3D);
 
-      const processHand=(id,prevPos,gpIdx)=>{
+      const processHand=(id,prevPos)=>{
         const hand=document.querySelector(id);
         if(!hand) return;
 
@@ -276,7 +232,6 @@
 
         if(hits.length && hits[0].distance<0.18 && handVelLocal.y<-0.2){
           const worldVel=handVelLocal.clone().applyQuaternion(rig.quaternion);
-
           this.vel.x=-worldVel.x*this.data.strength;
           this.vel.z=-worldVel.z*this.data.strength;
           this.vel.y=-worldVel.y*(this.data.strength*1.5);
@@ -284,8 +239,8 @@
         prevPos.copy(currPos);
       };
 
-      processHand('#leftHand',this.prevL,0);
-      processHand('#rightHand',this.prevR,1);
+      processHand('#leftHand',this.prevL);
+      processHand('#rightHand',this.prevR);
 
       this.vel.y+=this.data.gravity*dt;
       rig.position.addScaledVector(this.vel,dt);
@@ -300,161 +255,132 @@
   });
   </script>
 
-  <!-- ================= VOICE CHAT (P2P) ================= -->
+  <!-- ================= VOICE CHAT ================= -->
   <script>
   AFRAME.registerComponent("voice-chat", {
     init() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.warn("Voice chat: getUserMedia not supported");
-        return;
-      }
-
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
-          if (NAF.connection?.adapter && NAF.connection.adapter.setLocalMediaStream) {
+          if (NAF.connection?.adapter?.setLocalMediaStream) {
             NAF.connection.adapter.setLocalMediaStream(stream);
           }
-
-          const audio = document.createElement("audio");
-          audio.autoplay = true;
-          audio.muted = true;
-          audio.srcObject = stream;
-          document.body.appendChild(audio);
-        })
-        .catch(err => {
-          console.warn("Voice chat getUserMedia failed:", err);
         });
     }
   });
   </script>
+
 </head>
 
 <body>
-  <a-scene background="color:#111"
-           physics="debug: false"
-           networked-scene="app:gorilla; room:room1; adapter:webrtc">
 
-    <!-- VOICE CHAT CONTROLLER -->
-    <a-entity voice-chat></a-entity>
+<!-- ================= DYNAMIC ROOM CODE ================= -->
+<script>
+const room = localStorage.getItem("roomCode") || "room1";
+document.write(`
+<a-scene background="color:#111"
+physics="debug:false"
+networked-scene="app:gorilla; room:${room}; adapter:webrtc">
+`);
+</script>
 
-    <!-- ASSETS -->
-    <a-assets>
-      <!-- Root avatar template for remote players -->
-      <a-template id="avatar-template">
-        <a-entity>
-          <a-sphere class="remote-head" radius="0.25" position="0 1.6 0" color="#39f"></a-sphere>
-          <a-box class="remote-left-hand"  width="0.1" height="0.1" depth="0.1"
-                 position="-0.3 1.2 -0.3" color="#39f"></a-box>
-          <a-box class="remote-right-hand" width="0.1" height="0.1" depth="0.1"
-                 position="0.3 1.2 -0.3" color="#39f"></a-box>
-        </a-entity>
-      </a-template>
+<!-- ================= ASSETS + TEMPLATES ================= -->
+<a-assets>
 
-      <!-- Local/remote head + hand templates -->
-      <a-template id="head-template">
-        <a-sphere radius="0.2"></a-sphere>
-      </a-template>
+  <!-- Remote avatar template -->
+  <a-template id="avatar-template">
+    <a-entity>
+      <a-sphere class="remote-head" radius="0.25" position="0 1.6 0" color="#39f"></a-sphere>
+      <a-box class="remote-left-hand" width="0.1" height="0.1" depth="0.1"
+             position="-0.3 1.2 -0.3" color="#39f"></a-box>
+      <a-box class="remote-right-hand" width="0.1" height="0.1" depth="0.1"
+             position="0.3 1.2 -0.3" color="#39f"></a-box>
+    </a-entity>
+  </a-template>
 
-      <a-template id="left-hand-template">
-        <a-box width="0.1" height="0.1" depth="0.1"></a-box>
-      </a-template>
+  <!-- Local head template -->
+  <a-template id="head-template">
+    <a-sphere radius="0.2"></a-sphere>
+  </a-template>
 
-      <a-template id="right-hand-template">
-        <a-box width="0.1" height="0.1" depth="0.1"></a-box>
-      </a-template>
-    </a-assets>
+  <!-- Local left hand template -->
+  <a-template id="left-hand-template">
+    <a-box width="0.1" height="0.1" depth="0.1"></a-box>
+  </a-template>
 
-    <!-- MUSIC -->
-    <a-entity sound="src: url(bg.mp3); autoplay:true; loop:true" synced-music></a-entity>
+  <!-- Local right hand template -->
+  <a-template id="right-hand-template">
+    <a-box width="0.1" height="0.1" depth="0.1"></a-box>
+  </a-template>
 
-    <!-- SKY + LIGHTING -->
-    <a-sky id="sky" radius="500" color="#0a0a33"></a-sky>
-    <a-entity id="sun" light="type:directional; intensity:1" position="0 100 0"></a-entity>
-    <a-entity id="ambient" light="type:ambient; intensity:0.5"></a-entity>
-    <a-entity day-night-cycle></a-entity>
+</a-assets>
 
-    <!-- ================= PLAYER (NETWORKED) ================= -->
-    <a-entity id="player"
-              networked="template:#avatar-template; attachTemplateToLocal:false">
+<!-- ================= PLAYER ================= -->
+<a-entity id="player"
+          networked="template:#avatar-template; attachTemplateToLocal:false">
 
-      <a-entity id="rig" snap-turn gorilla-physics>
+  <a-entity id="rig" snap-turn gorilla-physics>
 
-        <!-- NETWORKED HEAD + NAME TAG -->
-        <a-entity id="head"
-                  position="0 1.6 0"
-                  networked="template:#head-template; attachTemplateToLocal:false"
-                  name-tag>
-        </a-entity>
-
-        <!-- LOCAL CAMERA -->
-        <a-camera position="0 1.6 0"></a-camera>
-
-        <!-- CONTROLLERS -->
-        <a-entity id="lc" oculus-touch-controls="hand: left"></a-entity>
-        <a-entity id="rc" oculus-touch-controls="hand: right"></a-entity>
-
-        <!-- NETWORKED HANDS FOLLOWING CONTROLLERS -->
-        <a-entity id="leftHand"
-                  hand-follow="target:#lc"
-                  hand-grabber
-                  static-body="shape: sphere; radius: 0.08"
-                  networked="template:#left-hand-template; attachTemplateToLocal:false">
-        </a-entity>
-
-        <a-entity id="rightHand"
-                  hand-follow="target:#rc"
-                  hand-grabber
-                  static-body="shape: sphere; radius: 0.08"
-                  networked="template:#right-hand-template; attachTemplateToLocal:false">
-        </a-entity>
-
-      </a-entity>
+    <!-- NETWORKED HEAD -->
+    <a-entity id="head"
+              position="0 1.6 0"
+              name-tag
+              networked="template:#head-template; attachTemplateToLocal:false">
     </a-entity>
 
-    <!-- ================= WORLD ================= -->
-    <a-plane class="climbable"
-             rotation="-90 0 0"
-             width="100"
-             height="100"
-             color="#00aa00"
-             static-body></a-plane>
+    <!-- CAMERA -->
+    <a-camera position="0 1.6 0"></a-camera>
 
-    <!-- COLOR PANEL -->
-    <a-box position="1 1 -1" width="2" height="0.2" depth="2" color="#555" static-body></a-box>
+    <!-- CONTROLLERS -->
+    <a-entity id="lc" oculus-touch-controls="hand:left"></a-entity>
+    <a-entity id="rc" oculus-touch-controls="hand:right"></a-entity>
 
-    <!-- COLOR CUBES -->
-    <a-box position="0.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ff0000" grabbable color-changer dynamic-body></a-box>
-    <a-box position="1 1.2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ff7f00" grabbable color-changer dynamic-body></a-box>
-    <a-box position="1.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ffff00" grabbable color-changer dynamic-body></a-box>
+    <!-- NETWORKED HANDS -->
+    <a-entity id="leftHand"
+              hand-follow="target:#lc"
+              hand-grabber
+              static-body
+              networked="template:#left-hand-template; attachTemplateToLocal:false">
+    </a-entity>
 
-    <a-box position="0.5 1.6 -1" width="0.4" height="0.4" depth="0.4"
-           color="#00ff00" grabbable color-changer dynamic-body></a-box>
-    <a-box position="1 1.6 -1" width="0.4" height="0.4" depth="0.4"
-           color="#0000ff" grabbable color-changer dynamic-body></a-box>
-    <a-box position="1.5 1.6 -1" width="0.4" height="0.4" depth="0.4"
-           color="#4b0082" grabbable color-changer dynamic-body></a-box>
+    <a-entity id="rightHand"
+              hand-follow="target:#rc"
+              hand-grabber
+              static-body
+              networked="template:#right-hand-template; attachTemplateToLocal:false">
+    </a-entity>
 
-    <a-box position="1 2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#9400d3" grabbable color-changer dynamic-body></a-box>
-    <a-box position="0.5 2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#ffffff" grabbable color-changer dynamic-body></a-box>
-    <a-box position="1.5 2 -1" width="0.4" height="0.4" depth="0.4"
-           color="#000000" grabbable color-changer dynamic-body></a-box>
+  </a-entity>
+</a-entity>
 
-  </a-scene>
+<!-- ================= WORLD ================= -->
+<a-plane class="climbable"
+         rotation="-90 0 0"
+         width="100"
+         height="100"
+         material="color:#00ff00; shader:flat"
+         static-body></a-plane>
 
-  <!-- ================= APPLY DEFAULT PLAYER COLOR ================= -->
-  <script>
-    const chosenColor = "#ff4444";
-    ["#head", "#leftHand", "#rightHand"].forEach(id => {
-      const el = document.querySelector(id);
-      if (el) {
-        el.setAttribute("player-color", "color: " + chosenColor);
-      }
-    });
-  </script>
+<!-- COLOR PANEL -->
+<a-box position="1 1 -1" width="2" height="0.2" depth="2" color="#555"></a-box>
+
+<!-- COLOR CUBES -->
+<a-box position="0.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
+       color="#ff0000" grabbable color-changer dynamic-body></a-box>
+
+<a-box position="1 1.2 -1" width="0.4" height="0.4" depth="0.4"
+       color="#00ff00" grabbable color-changer dynamic-body></a-box>
+
+<a-box position="1.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
+       color="#0000ff" grabbable color-changer dynamic-body></a-box>
+
+<!-- COMPUTER -->
+<a-box position="0 1 -2" width="1" height="0.6" depth="0.2" color="#222">
+  <a-plane position="0 0 0.11" width="0.9" height="0.45" color="#000"
+    text="value: Click then type; align:center; color:#0f0; width:1.8"></a-plane>
+  <a-entity computer-input></a-entity>
+</a-box>
+
+</a-scene>
+
 </body>
 </html>
