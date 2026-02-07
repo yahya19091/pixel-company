@@ -338,14 +338,14 @@ networked-scene="app:gorilla; room:${room}; adapter:webrtc">
     <a-entity id="leftHand"
               hand-follow="target:#lc"
               hand-grabber
-              static-body
+              static-body="shape: sphere; radius: 0.08"
               networked="template:#left-hand-template; attachTemplateToLocal:false">
     </a-entity>
 
     <a-entity id="rightHand"
               hand-follow="target:#rc"
               hand-grabber
-              static-body
+              static-body="shape: sphere; radius: 0.08"
               networked="template:#right-hand-template; attachTemplateToLocal:false">
     </a-entity>
 
@@ -363,7 +363,7 @@ networked-scene="app:gorilla; room:${room}; adapter:webrtc">
 <!-- COLOR PANEL -->
 <a-box position="1 1 -1" width="2" height="0.2" depth="2" color="#555"></a-box>
 
-<!-- COLOR CUBES -->
+<!-- COLOR CUBES (now with dynamic-body) -->
 <a-box position="0.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
        color="#ff0000" grabbable color-changer dynamic-body></a-box>
 
@@ -373,8 +373,8 @@ networked-scene="app:gorilla; room:${room}; adapter:webrtc">
 <a-box position="1.5 1.2 -1" width="0.4" height="0.4" depth="0.4"
        color="#0000ff" grabbable color-changer dynamic-body></a-box>
 
-<!-- COMPUTER (moved left to X = -3) -->
-<a-box position="-3 1 -2" width="1" height="0.6" depth="0.2" color="#222">
+<!-- COMPUTER (moved left but still clickable) -->
+<a-box position="-1.5 1 -2" width="1" height="0.6" depth="0.2" color="#222">
   <a-plane position="0 0 0.11" width="0.9" height="0.45" color="#000"
     text="value: Click then type; align:center; color:#0f0; width:1.8"></a-plane>
   <a-entity computer-input></a-entity>
